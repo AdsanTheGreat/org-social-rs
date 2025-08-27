@@ -57,6 +57,32 @@ fn render_text_with_cursor(text: &str, cursor_pos: usize) -> Vec<Line> {
     rendered_lines
 }
 
+/// Render single-line text with cursor positioned correctly
+fn render_single_line_with_cursor(text: &str, cursor_pos: usize) -> Line {
+    if text.is_empty() {
+        return Line::from(Span::styled("█", Style::default().fg(Color::White).bg(Color::Gray)));
+    }
+    
+    let mut line_spans = Vec::new();
+    
+    if cursor_pos > 0 && cursor_pos <= text.len() {
+        line_spans.push(Span::raw(&text[..cursor_pos]));
+    }
+    
+    if cursor_pos < text.len() {
+        // Highlight the character at cursor position
+        line_spans.push(Span::styled(&text[cursor_pos..cursor_pos + 1], Style::default().fg(Color::Black).bg(Color::White)));
+        if cursor_pos + 1 < text.len() {
+            line_spans.push(Span::raw(&text[cursor_pos + 1..]));
+        }
+    } else {
+        // Cursor at end of text
+        line_spans.push(Span::styled("█", Style::default().fg(Color::White).bg(Color::Gray)));
+    }
+    
+    Line::from(line_spans)
+}
+
 /// Draw the new post window overlay
 pub fn draw_new_post_window(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPostState, cursor_visible: bool) {
     // Create centered new post window
@@ -171,40 +197,33 @@ fn draw_tags_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPost
         Style::default().bg(Color::Black)
     };
     
-    let mut tags_content = String::new();
+    let mut tags_content_parts = Vec::new();
     
     // Show existing tags
     if !new_post_state.tags.is_empty() {
         for tag in &new_post_state.tags {
-            tags_content.push_str(&format!("#{tag} "));
+            tags_content_parts.push(Span::raw(format!("#{tag} ")));
         }
     }
     
-    // Show current input
+    // Show current input with proper cursor handling
     if !new_post_state.tags_input.is_empty() || new_post_state.current_field == new_post::NewPostField::Tags {
         if new_post_state.current_field == new_post::NewPostField::Tags && cursor_visible {
-            let input_with_cursor = if new_post_state.tags_input.is_empty() {
-                "█".to_string()
-            } else {
-                let cursor_pos = new_post_state.tags_input_cursor;
-                if cursor_pos >= new_post_state.tags_input.len() {
-                    format!("{}█", new_post_state.tags_input)
-                } else {
-                    let (before, after) = new_post_state.tags_input.split_at(cursor_pos);
-                    format!("{}█{}", before, after)
-                }
-            };
-            tags_content.push_str(&input_with_cursor);
+            let input_line = render_single_line_with_cursor(&new_post_state.tags_input, new_post_state.tags_input_cursor);
+            tags_content_parts.extend(input_line.spans);
         } else {
-            tags_content.push_str(&new_post_state.tags_input);
+            tags_content_parts.push(Span::raw(&new_post_state.tags_input));
         }
     }
     
-    if tags_content.is_empty() {
-        tags_content = "Space separated, # optional".to_string();
-    }
+    // If no content, show placeholder
+    let tags_line = if tags_content_parts.is_empty() {
+        Line::from(Span::styled("Space separated, # optional", Style::default().fg(Color::Gray)))
+    } else {
+        Line::from(tags_content_parts)
+    };
     
-    let tags = Paragraph::new(tags_content)
+    let tags = Paragraph::new(vec![tags_line])
         .block(Block::default().borders(Borders::ALL).title(tags_title))
         .wrap(Wrap { trim: true })
         .style(tags_style);
@@ -223,27 +242,24 @@ fn draw_mood_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPost
         Style::default().bg(Color::Black)
     };
     
-    let mood_content = if new_post_state.mood.is_empty() {
+    let mood_line = if new_post_state.mood.is_empty() {
         if new_post_state.current_field == new_post::NewPostField::Mood && cursor_visible {
-            "Your mood█".to_string()
+            Line::from(vec![
+                Span::styled("Your mood", Style::default().fg(Color::Gray)),
+                Span::styled("█", Style::default().fg(Color::White).bg(Color::Gray)),
+            ])
         } else {
-            "Your mood".to_string()
+            Line::from(Span::styled("Your mood", Style::default().fg(Color::Gray)))
         }
     } else {
         if new_post_state.current_field == new_post::NewPostField::Mood && cursor_visible {
-            let cursor_pos = new_post_state.mood_cursor;
-            if cursor_pos >= new_post_state.mood.len() {
-                format!("{}█", new_post_state.mood)
-            } else {
-                let (before, after) = new_post_state.mood.split_at(cursor_pos);
-                format!("{}█{}", before, after)
-            }
+            render_single_line_with_cursor(&new_post_state.mood, new_post_state.mood_cursor)
         } else {
-            new_post_state.mood.clone()
+            Line::from(new_post_state.mood.clone())
         }
     };
     
-    let mood = Paragraph::new(mood_content)
+    let mood = Paragraph::new(vec![mood_line])
         .block(Block::default().borders(Borders::ALL).title(mood_title))
         .style(mood_style);
     f.render_widget(mood, area);
@@ -261,27 +277,24 @@ fn draw_lang_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPost
         Style::default().bg(Color::Black)
     };
     
-    let lang_content = if new_post_state.lang.is_empty() {
+    let lang_line = if new_post_state.lang.is_empty() {
         if new_post_state.current_field == new_post::NewPostField::Lang && cursor_visible {
-            "e.g., en, es█".to_string()
+            Line::from(vec![
+                Span::styled("e.g., en, es", Style::default().fg(Color::Gray)),
+                Span::styled("█", Style::default().fg(Color::White).bg(Color::Gray)),
+            ])
         } else {
-            "e.g., en, es".to_string()
+            Line::from(Span::styled("e.g., en, es", Style::default().fg(Color::Gray)))
         }
     } else {
         if new_post_state.current_field == new_post::NewPostField::Lang && cursor_visible {
-            let cursor_pos = new_post_state.lang_cursor;
-            if cursor_pos >= new_post_state.lang.len() {
-                format!("{}█", new_post_state.lang)
-            } else {
-                let (before, after) = new_post_state.lang.split_at(cursor_pos);
-                format!("{}█{}", before, after)
-            }
+            render_single_line_with_cursor(&new_post_state.lang, new_post_state.lang_cursor)
         } else {
-            new_post_state.lang.clone()
+            Line::from(new_post_state.lang.clone())
         }
     };
     
-    let lang = Paragraph::new(lang_content)
+    let lang = Paragraph::new(vec![lang_line])
         .block(Block::default().borders(Borders::ALL).title(lang_title))
         .style(lang_style);
     f.render_widget(lang, area);
@@ -299,27 +312,24 @@ fn draw_poll_end_field(f: &mut Frame, area: Rect, new_post_state: &new_post::New
         Style::default().bg(Color::Black)
     };
     
-    let poll_end_content = if new_post_state.poll_end.is_empty() {
+    let poll_end_line = if new_post_state.poll_end.is_empty() {
         if new_post_state.current_field == new_post::NewPostField::PollEnd && cursor_visible {
-            "ISO date█".to_string()
+            Line::from(vec![
+                Span::styled("ISO date", Style::default().fg(Color::Gray)),
+                Span::styled("█", Style::default().fg(Color::White).bg(Color::Gray)),
+            ])
         } else {
-            "ISO date".to_string()
+            Line::from(Span::styled("ISO date", Style::default().fg(Color::Gray)))
         }
     } else {
         if new_post_state.current_field == new_post::NewPostField::PollEnd && cursor_visible {
-            let cursor_pos = new_post_state.poll_end_cursor;
-            if cursor_pos >= new_post_state.poll_end.len() {
-                format!("{}█", new_post_state.poll_end)
-            } else {
-                let (before, after) = new_post_state.poll_end.split_at(cursor_pos);
-                format!("{}█{}", before, after)
-            }
+            render_single_line_with_cursor(&new_post_state.poll_end, new_post_state.poll_end_cursor)
         } else {
-            new_post_state.poll_end.clone()
+            Line::from(new_post_state.poll_end.clone())
         }
     };
     
-    let poll_end = Paragraph::new(poll_end_content)
+    let poll_end = Paragraph::new(vec![poll_end_line])
         .block(Block::default().borders(Borders::ALL).title(poll_end_title))
         .style(poll_end_style);
     f.render_widget(poll_end, area);
@@ -337,27 +347,24 @@ fn draw_poll_option_field(f: &mut Frame, area: Rect, new_post_state: &new_post::
         Style::default().bg(Color::Black)
     };
     
-    let poll_option_content = if new_post_state.poll_option.is_empty() {
+    let poll_option_line = if new_post_state.poll_option.is_empty() {
         if new_post_state.current_field == new_post::NewPostField::PollOption && cursor_visible {
-            "Poll option text█".to_string()
+            Line::from(vec![
+                Span::styled("Poll option text", Style::default().fg(Color::Gray)),
+                Span::styled("█", Style::default().fg(Color::White).bg(Color::Gray)),
+            ])
         } else {
-            "Poll option text".to_string()
+            Line::from(Span::styled("Poll option text", Style::default().fg(Color::Gray)))
         }
     } else {
         if new_post_state.current_field == new_post::NewPostField::PollOption && cursor_visible {
-            let cursor_pos = new_post_state.poll_option_cursor;
-            if cursor_pos >= new_post_state.poll_option.len() {
-                format!("{}█", new_post_state.poll_option)
-            } else {
-                let (before, after) = new_post_state.poll_option.split_at(cursor_pos);
-                format!("{}█{}", before, after)
-            }
+            render_single_line_with_cursor(&new_post_state.poll_option, new_post_state.poll_option_cursor)
         } else {
-            new_post_state.poll_option.clone()
+            Line::from(new_post_state.poll_option.clone())
         }
     };
     
-    let poll_option = Paragraph::new(poll_option_content)
+    let poll_option = Paragraph::new(vec![poll_option_line])
         .block(Block::default().borders(Borders::ALL).title(poll_option_title))
         .style(poll_option_style);
     f.render_widget(poll_option, area);
