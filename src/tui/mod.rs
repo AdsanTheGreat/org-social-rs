@@ -77,6 +77,7 @@ async fn run_app<B: ratatui::backend::Backend>(
                 &app.mode,
                 &app.view_mode,
                 &app.posts,
+                &app.notification_feed,
                 &app.thread_view,
                 &app.navigator,
                 app.current_post(),

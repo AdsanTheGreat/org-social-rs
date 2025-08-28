@@ -7,13 +7,15 @@ use super::{
     navigation::Navigator,
 };
 use chrono::{Duration as ChronoDuration, Utc};
-use org_social_lib_rs::{feed, new_post, parser, reply, threading};
+use org_social_lib_rs::{feed, new_post, notifications, parser, reply, threading};
 use std::time::Instant;
 
 /// Application state for the TUI
 pub struct TUI {
     /// All posts to display
     pub posts: Vec<parser::Post>,
+    /// Notification feed for the user
+    pub notification_feed: notifications::NotificationFeed,
     /// Threaded view of posts
     pub thread_view: threading::ThreadView,
     /// Current view mode (list or threaded)
@@ -65,6 +67,20 @@ impl TUI {
             }
         };
 
+        // Create notification feed from all posts for the user
+        let all_posts_for_notifications = if user_only {
+            // If user_only, we only have user posts, so no notifications
+            Vec::new()
+        } else {
+            // Clone the feed posts for notifications before moving them
+            feed.posts.clone()
+        };
+        let notification_feed = notifications::NotificationFeed::create_notification_feed(
+            user_profile,
+            &user_posts,
+            all_posts_for_notifications,
+        );
+
         let mut posts: Vec<parser::Post> = feed.posts.into_iter().collect();
 
         // Apply source filter
@@ -91,6 +107,7 @@ impl TUI {
 
         let mut app = TUI {
             posts,
+            notification_feed,
             thread_view,
             view_mode: ViewMode::List,
             navigator: Navigator::new(),
@@ -125,11 +142,11 @@ impl TUI {
             }
             EventResult::Continue => {}
             EventResult::NextPost => {
-                self.navigator.next_post(&self.view_mode, &self.posts, &self.thread_view);
+                self.navigator.next_post(&self.view_mode, &self.posts, &self.thread_view, Some(&self.notification_feed));
                 self.process_current_post_content();
             }
             EventResult::PrevPost => {
-                self.navigator.prev_post(&self.view_mode, &self.posts, &self.thread_view);
+                self.navigator.prev_post(&self.view_mode, &self.posts, &self.thread_view, Some(&self.notification_feed));
                 self.process_current_post_content();
             }
             EventResult::ScrollDown => {
@@ -416,6 +433,12 @@ impl TUI {
                 let thread_posts = current_thread.flatten();
                 thread_posts.get(self.navigator.selected_thread_post).copied()
             }
+            ViewMode::Notifications => {
+                // Get the post from the notification at the selected index
+                self.notification_feed.notifications
+                    .get(self.navigator.selected_post)
+                    .map(|notification| &notification.post)
+            }
         }
     }
 
@@ -438,6 +461,13 @@ impl TUI {
                 // For threaded view, we'd need more complex logic
                 // For now, just return None to keep it simple
                 None
+            }
+            ViewMode::Notifications => {
+                if self.navigator.selected_post < self.notification_feed.notifications.len() {
+                    Some(self.navigator.selected_post)
+                } else {
+                    None
+                }
             }
         }
     }

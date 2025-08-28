@@ -4,7 +4,7 @@ use super::super::activatable::{ActivatableCollector, ActivatableManager};
 use super::super::modes::{AppMode, ViewMode};
 use super::super::navigation::Navigator;
 use super::{content, help, new_post, post_list, reply, status};
-use org_social_lib_rs::{new_post as new_post_module, parser, reply as reply_module, threading};
+use org_social_lib_rs::{new_post as new_post_module, notifications, parser, reply as reply_module, threading};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     Frame,
@@ -16,6 +16,7 @@ pub fn draw_ui(
     mode: &AppMode,
     view_mode: &ViewMode,
     posts: &[parser::Post],
+    notification_feed: &notifications::NotificationFeed,
     thread_view: &threading::ThreadView,
     navigator: &Navigator,
     current_post: Option<&parser::Post>,
@@ -43,7 +44,7 @@ pub fn draw_ui(
             }
         }
         _ => {
-            draw_main_ui(f, size, view_mode, posts, thread_view, navigator, current_post, mode, status_message, collector, activatable_manager);
+            draw_main_ui(f, size, view_mode, posts, notification_feed, thread_view, navigator, current_post, mode, status_message, collector, activatable_manager);
         }
     }
 }
@@ -53,6 +54,7 @@ fn draw_main_ui(
     area: Rect,
     view_mode: &ViewMode,
     posts: &[parser::Post],
+    notification_feed: &notifications::NotificationFeed,
     thread_view: &threading::ThreadView,
     navigator: &Navigator,
     current_post: Option<&parser::Post>,
@@ -72,8 +74,8 @@ fn draw_main_ui(
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
         .split(main_chunks[0]);
 
-    // Draw post list
-    post_list::draw_post_list(f, content_chunks[0], view_mode, posts, thread_view, navigator);
+    // Draw post list (or notification list)
+    post_list::draw_post_list(f, content_chunks[0], view_mode, posts, notification_feed, thread_view, navigator);
 
     // Draw post content
     content::draw_post_content(f, content_chunks[1], current_post, navigator.scroll_offset, collector, activatable_manager);

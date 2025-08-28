@@ -1,7 +1,7 @@
 //! Navigation logic for posts and threads.
 
 use super::modes::ViewMode;
-use org_social_lib_rs::{parser, threading};
+use org_social_lib_rs::{notifications, parser, threading};
 
 pub struct Navigator {
     pub selected_post: usize,
@@ -20,7 +20,7 @@ impl Navigator {
         }
     }
 
-    pub fn next_post(&mut self, view_mode: &ViewMode, posts: &[parser::Post], thread_view: &threading::ThreadView) {
+    pub fn next_post(&mut self, view_mode: &ViewMode, posts: &[parser::Post], thread_view: &threading::ThreadView, notification_feed: Option<&notifications::NotificationFeed>) {
         match view_mode {
             ViewMode::List => {
                 if !posts.is_empty() && self.selected_post < posts.len().saturating_sub(1) {
@@ -31,10 +31,19 @@ impl Navigator {
             ViewMode::Threaded => {
                 self.next_threaded_post(thread_view);
             }
+            ViewMode::Notifications => {
+                if let Some(notification_feed) = notification_feed {
+                    if !notification_feed.notifications.is_empty() && 
+                       self.selected_post < notification_feed.notifications.len().saturating_sub(1) {
+                        self.selected_post += 1;
+                        self.scroll_offset = 0;
+                    }
+                }
+            }
         }
     }
 
-    pub fn prev_post(&mut self, view_mode: &ViewMode, posts: &[parser::Post], thread_view: &threading::ThreadView) {
+    pub fn prev_post(&mut self, view_mode: &ViewMode, posts: &[parser::Post], thread_view: &threading::ThreadView, notification_feed: Option<&notifications::NotificationFeed>) {
         match view_mode {
             ViewMode::List => {
                 if !posts.is_empty() && self.selected_post > 0 {
@@ -44,6 +53,14 @@ impl Navigator {
             }
             ViewMode::Threaded => {
                 self.prev_threaded_post(thread_view);
+            }
+            ViewMode::Notifications => {
+                if let Some(notification_feed) = notification_feed {
+                    if !notification_feed.notifications.is_empty() && self.selected_post > 0 {
+                        self.selected_post -= 1;
+                        self.scroll_offset = 0;
+                    }
+                }
             }
         }
     }
