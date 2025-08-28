@@ -1099,7 +1099,8 @@ dependencies = [
 [[package]]
 name = "org-social-lib-rs"
 version = "0.1.0"
-source = "git+https://github.com/AdsanTheGreat/org-social-lib-rs#607206ad43a786f85a786e6a11e70e8a6ad71ed9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f71da5b72fa34eee492a1b970d6c17eb1576220faa9c18482c11b9d6745ba3a4"
 dependencies = [
  "chrono",
  "reqwest",
