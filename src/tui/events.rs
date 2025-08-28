@@ -129,6 +129,10 @@ fn handle_new_post_input(key: KeyEvent) -> EventResult {
 fn handle_help_input(key: KeyEvent) -> EventResult {
     match key.code {
         KeyCode::Char('h') | KeyCode::Char('?') | KeyCode::Esc => EventResult::ToggleHelp,
+        KeyCode::Char('j') | KeyCode::Down => EventResult::ScrollDown,
+        KeyCode::Char('k') | KeyCode::Up => EventResult::ScrollUp,
+        KeyCode::Char('g') => EventResult::GoToFirst,
+        KeyCode::Char('G') => EventResult::GoToLast,
         _ => EventResult::Continue,
     }
 }

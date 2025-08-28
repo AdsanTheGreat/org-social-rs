@@ -85,6 +85,7 @@ async fn run_app<B: ratatui::backend::Backend>(
                 &app.new_post_state,
                 &app.status_message,
                 app.cursor_visible,
+                app.help_scroll,
                 &app.activatable_collector,
                 Some(&app.activatable_manager),
             )

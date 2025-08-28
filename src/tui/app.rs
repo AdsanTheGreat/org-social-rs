@@ -24,6 +24,8 @@ pub struct TUI {
     pub navigator: Navigator,
     /// Whether to show help overlay
     pub show_help: bool,
+    /// Help scroll position
+    pub help_scroll: u16,
     /// Current mode (browsing, reply, etc.)
     pub mode: AppMode,
     /// Reply state (when replying to a post)
@@ -112,6 +114,7 @@ impl TUI {
             view_mode: ViewMode::List,
             navigator: Navigator::new(),
             show_help: false,
+            help_scroll: 0,
             mode: AppMode::Browsing,
             reply_state: None,
             reply_manager: reply::ReplyManager::new(file_path),
@@ -150,16 +153,32 @@ impl TUI {
                 self.process_current_post_content();
             }
             EventResult::ScrollDown => {
-                self.navigator.scroll_down(&self.posts);
+                if self.mode == AppMode::Help {
+                    self.scroll_help_down();
+                } else {
+                    self.navigator.scroll_down(&self.posts);
+                }
             }
             EventResult::ScrollUp => {
-                self.navigator.scroll_up();
+                if self.mode == AppMode::Help {
+                    self.scroll_help_up();
+                } else {
+                    self.navigator.scroll_up();
+                }
             }
             EventResult::GoToFirst => {
-                self.navigator.go_to_first(&self.posts);
+                if self.mode == AppMode::Help {
+                    self.help_scroll = 0;
+                } else {
+                    self.navigator.go_to_first(&self.posts);
+                }
             }
             EventResult::GoToLast => {
-                self.navigator.go_to_last(&self.posts);
+                if self.mode == AppMode::Help {
+                    self.scroll_help_to_bottom();
+                } else {
+                    self.navigator.go_to_last(&self.posts);
+                }
             }
             EventResult::ToggleView => {
                 self.toggle_view_mode();
@@ -288,9 +307,23 @@ impl TUI {
         self.show_help = !self.show_help;
         if self.show_help {
             self.mode = AppMode::Help;
+            self.help_scroll = 0; // Reset scroll when opening help
         } else {
             self.mode = AppMode::Browsing;
         }
+    }
+
+    pub fn scroll_help_down(&mut self) {
+        self.help_scroll = self.help_scroll.saturating_add(1);
+    }
+
+    pub fn scroll_help_up(&mut self) {
+        self.help_scroll = self.help_scroll.saturating_sub(1);
+    }
+
+    pub fn scroll_help_to_bottom(&mut self) {
+        // Set to a large value, it will be clamped during rendering
+        self.help_scroll = 1000;
     }
 
     pub fn handle_reply_input(&mut self, c: char) {

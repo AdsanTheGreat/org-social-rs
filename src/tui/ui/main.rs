@@ -24,6 +24,7 @@ pub fn draw_ui(
     new_post_state: &Option<new_post_module::NewPostState>,
     status_message: &Option<String>,
     cursor_visible: bool,
+    help_scroll: u16,
     collector: &ActivatableCollector,
     activatable_manager: Option<&ActivatableManager>,
 ) {
@@ -31,7 +32,7 @@ pub fn draw_ui(
 
     match mode {
         AppMode::Help => {
-            help::draw_help(f, size);
+            help::draw_help(f, size, help_scroll);
         }
         AppMode::Reply => {
             if let Some(reply_state) = reply_state {
