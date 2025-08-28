@@ -1,7 +1,15 @@
 [package]
 name = "org-social-rs"
 version = "0.1.1"
-edition = "2024"
+edition = "2021"
+authors = ["Adsan <me@adsan.dev>"]
+description = "A Rust-based CLI and TUI client for the Org-social decentralized social network"
+readme = "README.md"
+homepage = "https://github.com/AdsanTheGreat/org-social-rs"
+repository = "https://github.com/AdsanTheGreat/org-social-rs"
+license = "GPL-3.0"
+keywords = ["cli", "tui", "social", "org-mode", "decentralized"]
+categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
 org-social-lib-rs = { git = "https://github.com/AdsanTheGreat/org-social-lib-rs" }

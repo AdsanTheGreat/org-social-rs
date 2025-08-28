@@ -29,17 +29,19 @@ In no particular order:
 - Publish on crates.io
 
 ## Installation
-As of now, the crate is not on crates.io yet.
+
+```bash
+# Install from crates.io
+cargo install org-social-rs
+```
+
+### Development Installation
 
 ```bash
 # Clone the repository
 git clone https://github.com/AdsanTheGreat/org-social-rs.git
 cd org-social-rs
-```
 
-then
-
-```bash
 # Run the program, without installing
 cargo run --release
 
