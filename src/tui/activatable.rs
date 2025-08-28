@@ -35,6 +35,7 @@ pub struct ActivatablePosition {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivatableType {
     Hyperlink { url: String, display_text: String },
+    Mention { url: String, username: String },
     Block { block_type: String, is_collapsed: bool },
 }
 
@@ -92,6 +93,7 @@ impl ActivatableManager {
         let current_focused_type = self.focused_element()
             .map(|pos| match &pos.element_type {
                 ActivatableType::Hyperlink { url, .. } => format!("hyperlink:{url}"),
+                ActivatableType::Mention { url, .. } => format!("mention:{url}"),
                 ActivatableType::Block { block_type, .. } => format!("block:{}:{}", block_type, pos.original_line),
             });
 
@@ -127,6 +129,9 @@ impl ActivatableManager {
                     ActivatableType::Hyperlink { url, display_text } => {
                         self.add_hyperlink(url.clone(), display_text.clone(), *line, *start_col, *end_col);
                     }
+                    ActivatableType::Mention { url, username } => {
+                        self.add_mention(url.clone(), username.clone(), *line, *start_col, *end_col);
+                    }
                     ActivatableType::Block { block_type, is_collapsed } => {
                         self.add_block_element(*original_line, *line, *start_col, block_type.clone(), *is_collapsed);
                     }
@@ -145,6 +150,21 @@ impl ActivatableManager {
         
         self.elements.insert(id, ActivatablePosition {
             element_type: ActivatableType::Hyperlink { url, display_text },
+            line,
+            start_col,
+            end_col,
+            original_line: line,
+        });
+        
+        id
+    }
+
+    pub fn add_mention(&mut self, url: String, username: String, line: usize, start_col: usize, end_col: usize) -> usize {
+        let id = self.next_id;
+        self.next_id += 1;
+        
+        self.elements.insert(id, ActivatablePosition {
+            element_type: ActivatableType::Mention { url, username },
             line,
             start_col,
             end_col,
@@ -243,6 +263,17 @@ impl ActivatableManager {
         }
     }
 
+    pub fn is_mention_focused(&self, url: &str) -> bool {
+        if let Some(focused) = self.focused_element() {
+            match &focused.element_type {
+                ActivatableType::Mention { url: focused_url, .. } => focused_url == url,
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
     pub fn is_block_focused(&self, original_line: usize) -> bool {
         if let Some(focused) = self.focused_element() {
             match &focused.element_type {
@@ -280,6 +311,9 @@ impl ActivatableManager {
         if let Some(focused) = self.focused_element.and_then(|id| self.elements.get(&id).cloned()) {
             match &focused.element_type {
                 ActivatableType::Hyperlink { url, .. } => {
+                    Some(self.activate_link(url))
+                }
+                ActivatableType::Mention { url, .. } => {
                     Some(self.activate_link(url))
                 }
                 ActivatableType::Block { .. } => {
@@ -344,6 +378,7 @@ impl ActivatableManager {
         for (&id, pos) in &self.elements {
             let key = match &pos.element_type {
                 ActivatableType::Hyperlink { url, .. } => format!("hyperlink:{url}"),
+                ActivatableType::Mention { url, .. } => format!("mention:{url}"),
                 ActivatableType::Block { block_type, .. } => format!("block:{}:{}", block_type, pos.original_line),
             };
             if key == focus_key {
@@ -385,6 +420,27 @@ pub fn create_hyperlink_span<'a>(text: String, url: &str, activatable_manager: O
     Span::styled(text, style)
 }
 
+/// Create a styled span for a mention with proper focus highlighting
+pub fn create_mention_span<'a>(text: String, url: &str, activatable_manager: Option<&ActivatableManager>) -> Span<'a> {
+    let is_focused = activatable_manager
+        .map(|manager| manager.is_mention_focused(url))
+        .unwrap_or(false);
+
+    let style = if is_focused {
+        Style::default()
+            .fg(Color::LightCyan)
+            .bg(Color::DarkGray)
+            .add_modifier(Modifier::UNDERLINED)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::UNDERLINED)
+    };
+
+    Span::styled(text, style)
+}
+
 /// Create a styled span for a collapsed block with proper focus highlighting
 pub fn create_block_span<'a>(text: String, original_line: usize, activatable_manager: Option<&ActivatableManager>) -> Span<'a> {
     let is_focused = activatable_manager
@@ -414,6 +470,19 @@ pub fn collect_hyperlink(collector: &ActivatableCollector, url: String, display_
             start_col,
             end_col,
             line, // original_line same as line for hyperlinks
+        ));
+    }
+}
+
+/// Add a mention to the collector during rendering
+pub fn collect_mention(collector: &ActivatableCollector, url: String, username: String, line: usize, start_col: usize, end_col: usize) {
+    if let Ok(mut elements) = collector.lock() {
+        elements.push((
+            ActivatableType::Mention { url, username },
+            line,
+            start_col,
+            end_col,
+            line, // original_line same as line for mentions
         ));
     }
 }

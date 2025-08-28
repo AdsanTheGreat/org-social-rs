@@ -59,6 +59,30 @@ fn token_to_span(token: Token, collector: &ActivatableCollector, activatable_man
             // Create styled span for the hyperlink with focus checking
             activatable::create_hyperlink_span(display_text, &url, activatable_manager)
         }
+        Token::Mention { url, username } => {
+            let display_text = if username.starts_with("@") {
+                username.clone()
+            } else {
+                format!("@{username}")
+            };
+            let start_col = *col_offset;
+            let end_col = start_col + display_text.len();
+
+            // Add mention to collector
+            activatable::collect_mention(
+                collector,
+                url.clone(),
+                username.clone(),
+                line_num,
+                start_col,
+                end_col,
+            );
+
+            *col_offset += display_text.len();
+
+            // Create styled span for the mention with focus checking
+            activatable::create_mention_span(display_text, &url, activatable_manager)
+        }
         Token::InlineCode(text) => {
             let span = Span::styled(
                 text.clone(),
@@ -69,6 +93,23 @@ fn token_to_span(token: Token, collector: &ActivatableCollector, activatable_man
             *col_offset += text.len();
             span
         }
+        Token::Strikethrough(text) => {
+            let span = Span::styled(
+                text.clone(),
+                Style::default().add_modifier(Modifier::CROSSED_OUT)
+            );
+            *col_offset += text.len();
+            span
+        }
+        Token::Underline(text) => {
+            let span = Span::styled(
+                text.clone(),
+                Style::default().add_modifier(Modifier::UNDERLINED)
+            );
+            *col_offset += text.len();
+            span
+        }
+
     }
 }
 

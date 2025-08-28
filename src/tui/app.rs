@@ -469,6 +469,9 @@ impl TUI {
                     super::activatable::ActivatableType::Hyperlink { url, .. } => {
                         self.status_message = Some(format!("Link: {url}"));
                     }
+                    super::activatable::ActivatableType::Mention { url, username } => {
+                        self.status_message = Some(format!("Mention: {username} ({url})"));
+                    }
                     super::activatable::ActivatableType::Block { block_type, is_collapsed } => {
                         let state = if *is_collapsed { "collapsed" } else { "expanded" };
                         self.status_message = Some(format!("Block: {block_type} ({state})"));
@@ -490,6 +493,9 @@ impl TUI {
                 match &element.element_type {
                     super::activatable::ActivatableType::Hyperlink { url, .. } => {
                         self.status_message = Some(format!("Link: {url}"));
+                    }
+                    super::activatable::ActivatableType::Mention { url, username } => {
+                        self.status_message = Some(format!("Mention: {username} ({url})"));
                     }
                     super::activatable::ActivatableType::Block { block_type, is_collapsed } => {
                         let state = if *is_collapsed { "collapsed" } else { "expanded" };
