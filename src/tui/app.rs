@@ -477,7 +477,7 @@ impl TUI {
 
     pub fn process_current_post_content(&mut self) {
         if let Some(post) = self.current_post().cloned() {
-            self.activatable_manager.process_content(post.content());
+            self.activatable_manager.process_post(&post);
         }
     }
 

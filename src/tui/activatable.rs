@@ -84,11 +84,12 @@ impl ActivatableManager {
     }
 
     pub fn process_content(&mut self, content: &str) -> String {
-        // Process blocks first
-        let (processed, elements) = process_content_with_blocks(content, &self.collapsed_blocks);
-        self.processed_content = Some(processed.clone());
-        self.content_elements = elements;
+        // For backwards compatibility, return the content as-is
+        // The new token-based approach will handle formatting in the UI layer
+        content.to_string()
+    }
 
+    pub fn process_post(&mut self, post: &org_social_lib_rs::parser::Post) {
         // Clear current elements but keep focus info
         let current_focused_type = self.focused_element()
             .map(|pos| match &pos.element_type {
@@ -99,27 +100,26 @@ impl ActivatableManager {
 
         self.clear();
 
-        // Add block elements
-        let elements = self.content_elements.clone();
-        for element in &elements {
-            let is_collapsed = element.is_collapsed();
-            self.add_block_element(
-                element.start_line(),
-                element.start_line(), // For collapsed blocks, they appear on one line
-                0,
-                match element {
-                    ActivatableElement::Block(block) => block.block_type.clone(),
-                },
-                is_collapsed,
-            );
+        // Process blocks from the post
+        for element in post.blocks() {
+            match element {
+                org_social_lib_rs::blocks::ActivatableElement::Block(block) => {
+                    let is_collapsed = element.is_collapsed();
+                    self.add_block_element(
+                        element.start_line(),
+                        element.end_line(),
+                        0,
+                        block.block_type.clone(),
+                        is_collapsed,
+                    );
+                }
+            }
         }
 
         // Try to restore focus
         if let Some(focus_key) = current_focused_type {
             self.restore_focus(&focus_key);
         }
-
-        processed
     }
 
     pub fn update_from_collector(&mut self, collector: &ActivatableCollector) {
