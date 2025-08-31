@@ -26,7 +26,6 @@ In no particular order:
 - UX improvements - controls are very random and all over the place.
 - CLI feature parity - CLI should also have access to posting and replying.
 - Bug fixes, edge case handling - the tool is not very tested.
-- Publish on crates.io
 
 ## Installation
 
