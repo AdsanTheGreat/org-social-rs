@@ -15,15 +15,19 @@ Update to facilitate org-social-lib-rs 0.2.0 update
   - Accessible by pressing 't' to cycle through List -> Threaded -> Notifications view modes
   - Displays notification type indicators ([MENTION], [REPLY], [MENTION+REPLY])
   - Provides a dedicated interface to see only the most important posts for the user
-- **Enhanced Mention Support**: Improved mention handling in activatable elements
-  - Mentions are now displayed with distinct styling when compared to links
-  - Added dedicated mention tracking and focus handling in the activatable system
-  - Mentions have the correct url now, that should lead straight to the social.org file
 
 ### Changed
+- **Major TUI Content Parsing Rewrite**: Completely rewrote the content parsing system to use org-social-lib-rs's post auto-tokenization
+  - Replaced line-by-line content processing with token-by-token processing using `Post::tokens()` and `Post::blocks()` methods
+  - Simplified content rendering logic by leveraging pre-parsed tokens instead of manual parsing
 - Updated view mode cycling to include notifications: List -> Threaded -> Notifications -> List
 - Enhanced navigation system to support notification feed navigation
 - Updated UI components to handle notification display alongside existing post lists
+- Help view is now scrollable, and contains up to date info
+- - **Enhanced Mention Support**: Improved mention handling in activatable elements
+  - Mentions are now displayed with distinct styling when compared to links
+  - Added dedicated mention tracking and focus handling in the activatable system
+  - Mentions have the correct url now, that should lead straight to the social.org file
 
 ### Technical Details
 - **Notification mode**:
