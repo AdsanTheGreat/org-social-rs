@@ -12,13 +12,15 @@ pub enum AppMode {
 pub enum ViewMode {
     List,
     Threaded,
+    Notifications,
 }
 
 impl ViewMode {
     pub fn toggle(&self) -> Self {
         match self {
             ViewMode::List => ViewMode::Threaded,
-            ViewMode::Threaded => ViewMode::List,
+            ViewMode::Threaded => ViewMode::Notifications,
+            ViewMode::Notifications => ViewMode::List,
         }
     }
 
@@ -26,6 +28,7 @@ impl ViewMode {
         match self {
             ViewMode::List => "List View",
             ViewMode::Threaded => "Threaded View",
+            ViewMode::Notifications => "Notifications",
         }
     }
 }

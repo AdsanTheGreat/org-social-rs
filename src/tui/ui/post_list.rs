@@ -2,7 +2,7 @@
 
 use super::super::modes::ViewMode;
 use super::super::navigation::Navigator;
-use org_social_lib_rs::{parser, threading};
+use org_social_lib_rs::{notifications, parser, threading};
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -11,14 +11,17 @@ use ratatui::{
     Frame,
 };
 
-/// Draw the post list (either list or threaded view)
-pub fn draw_post_list(f: &mut Frame, area: Rect, view_mode: &ViewMode, posts: &[parser::Post], thread_view: &threading::ThreadView, navigator: &Navigator) {
+/// Draw the post list (either list or threaded view or notifications)
+pub fn draw_post_list(f: &mut Frame, area: Rect, view_mode: &ViewMode, posts: &[parser::Post], notification_feed: &notifications::NotificationFeed, thread_view: &threading::ThreadView, navigator: &Navigator) {
     match view_mode {
         ViewMode::List => {
             draw_list_view(f, area, posts, navigator);
         }
         ViewMode::Threaded => {
             draw_threaded_view(f, area, thread_view, navigator);
+        }
+        ViewMode::Notifications => {
+            draw_notifications_view(f, area, notification_feed, navigator);
         }
     }
 }
@@ -174,4 +177,77 @@ fn find_post_depth(node: &threading::ThreadNode, target_id: &str, current_depth:
     }
     
     None
+}
+
+fn draw_notifications_view(f: &mut Frame, area: Rect, notification_feed: &notifications::NotificationFeed, navigator: &Navigator) {
+    if notification_feed.notifications.is_empty() {
+        let no_notifications = List::new(vec![ListItem::new("No notifications")])
+            .block(Block::default().borders(Borders::ALL).title("Notifications (0/0)"))
+            .style(Style::default().fg(Color::Gray));
+        f.render_widget(no_notifications, area);
+        return;
+    }
+
+    let items: Vec<ListItem> = notification_feed.notifications
+        .iter()
+        .enumerate()
+        .map(|(i, notification)| {
+            let post = &notification.post;
+            
+            // Create the display line for the notification
+            let mut line = vec![];
+            
+            // Add notification type indicator
+            let notification_type_text = match notification.notification_type {
+                notifications::NotificationType::Mention => "[MENTION]",
+                notifications::NotificationType::Reply => "[REPLY]",
+                notifications::NotificationType::MentionAndReply => "[MENTION+REPLY]",
+            };
+            
+            line.push(Span::styled(
+                notification_type_text,
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            ));
+            line.push(Span::raw(" "));
+
+            // Add author
+            if let Some(author) = post.author() {
+                line.push(Span::styled(author.clone(), Style::default().fg(Color::Green)));
+                line.push(Span::raw(": "));
+            }
+
+            // Add truncated content
+            let content = post.content().trim().replace('\n', " ");
+            let max_len = area.width.saturating_sub(30) as usize; // Leave space for type and author
+            let truncated = if content.len() > max_len {
+                format!("{}...", &content[..max_len.min(content.len())])
+            } else {
+                content
+            };
+            line.push(Span::raw(truncated));
+
+            let style = if i == navigator.selected_post {
+                Style::default().bg(Color::Blue).fg(Color::White)
+            } else {
+                Style::default()
+            };
+
+            ListItem::new(Line::from(line)).style(style)
+        })
+        .collect();
+
+    let mut list_state = ListState::default();
+    list_state.select(Some(navigator.selected_post));
+
+    let posts_list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!("Notifications ({}/{})", 
+                    navigator.selected_post + 1, 
+                    notification_feed.notifications.len()))
+        )
+        .highlight_style(Style::default().bg(Color::DarkGray));
+
+    f.render_stateful_widget(posts_list, area, &mut list_state);
 }

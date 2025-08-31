@@ -7,13 +7,15 @@ use super::{
     navigation::Navigator,
 };
 use chrono::{Duration as ChronoDuration, Utc};
-use org_social_lib_rs::{feed, new_post, parser, reply, threading};
+use org_social_lib_rs::{feed, new_post, notifications, parser, reply, threading};
 use std::time::Instant;
 
 /// Application state for the TUI
 pub struct TUI {
     /// All posts to display
     pub posts: Vec<parser::Post>,
+    /// Notification feed for the user
+    pub notification_feed: notifications::NotificationFeed,
     /// Threaded view of posts
     pub thread_view: threading::ThreadView,
     /// Current view mode (list or threaded)
@@ -22,6 +24,8 @@ pub struct TUI {
     pub navigator: Navigator,
     /// Whether to show help overlay
     pub show_help: bool,
+    /// Help scroll position
+    pub help_scroll: u16,
     /// Current mode (browsing, reply, etc.)
     pub mode: AppMode,
     /// Reply state (when replying to a post)
@@ -65,6 +69,20 @@ impl TUI {
             }
         };
 
+        // Create notification feed from all posts for the user
+        let all_posts_for_notifications = if user_only {
+            // If user_only, we only have user posts, so no notifications
+            Vec::new()
+        } else {
+            // Clone the feed posts for notifications before moving them
+            feed.posts.clone()
+        };
+        let notification_feed = notifications::NotificationFeed::create_notification_feed(
+            user_profile,
+            &user_posts,
+            all_posts_for_notifications,
+        );
+
         let mut posts: Vec<parser::Post> = feed.posts.into_iter().collect();
 
         // Apply source filter
@@ -91,10 +109,12 @@ impl TUI {
 
         let mut app = TUI {
             posts,
+            notification_feed,
             thread_view,
             view_mode: ViewMode::List,
             navigator: Navigator::new(),
             show_help: false,
+            help_scroll: 0,
             mode: AppMode::Browsing,
             reply_state: None,
             reply_manager: reply::ReplyManager::new(file_path),
@@ -125,24 +145,40 @@ impl TUI {
             }
             EventResult::Continue => {}
             EventResult::NextPost => {
-                self.navigator.next_post(&self.view_mode, &self.posts, &self.thread_view);
+                self.navigator.next_post(&self.view_mode, &self.posts, &self.thread_view, Some(&self.notification_feed));
                 self.process_current_post_content();
             }
             EventResult::PrevPost => {
-                self.navigator.prev_post(&self.view_mode, &self.posts, &self.thread_view);
+                self.navigator.prev_post(&self.view_mode, &self.posts, &self.thread_view, Some(&self.notification_feed));
                 self.process_current_post_content();
             }
             EventResult::ScrollDown => {
-                self.navigator.scroll_down(&self.posts);
+                if self.mode == AppMode::Help {
+                    self.scroll_help_down();
+                } else {
+                    self.navigator.scroll_down(&self.posts);
+                }
             }
             EventResult::ScrollUp => {
-                self.navigator.scroll_up();
+                if self.mode == AppMode::Help {
+                    self.scroll_help_up();
+                } else {
+                    self.navigator.scroll_up();
+                }
             }
             EventResult::GoToFirst => {
-                self.navigator.go_to_first(&self.posts);
+                if self.mode == AppMode::Help {
+                    self.help_scroll = 0;
+                } else {
+                    self.navigator.go_to_first(&self.posts);
+                }
             }
             EventResult::GoToLast => {
-                self.navigator.go_to_last(&self.posts);
+                if self.mode == AppMode::Help {
+                    self.scroll_help_to_bottom();
+                } else {
+                    self.navigator.go_to_last(&self.posts);
+                }
             }
             EventResult::ToggleView => {
                 self.toggle_view_mode();
@@ -271,9 +307,23 @@ impl TUI {
         self.show_help = !self.show_help;
         if self.show_help {
             self.mode = AppMode::Help;
+            self.help_scroll = 0; // Reset scroll when opening help
         } else {
             self.mode = AppMode::Browsing;
         }
+    }
+
+    pub fn scroll_help_down(&mut self) {
+        self.help_scroll = self.help_scroll.saturating_add(1);
+    }
+
+    pub fn scroll_help_up(&mut self) {
+        self.help_scroll = self.help_scroll.saturating_sub(1);
+    }
+
+    pub fn scroll_help_to_bottom(&mut self) {
+        // Set to a large value, it will be clamped during rendering
+        self.help_scroll = 1000;
     }
 
     pub fn handle_reply_input(&mut self, c: char) {
@@ -416,12 +466,18 @@ impl TUI {
                 let thread_posts = current_thread.flatten();
                 thread_posts.get(self.navigator.selected_thread_post).copied()
             }
+            ViewMode::Notifications => {
+                // Get the post from the notification at the selected index
+                self.notification_feed.notifications
+                    .get(self.navigator.selected_post)
+                    .map(|notification| &notification.post)
+            }
         }
     }
 
     pub fn process_current_post_content(&mut self) {
         if let Some(post) = self.current_post().cloned() {
-            self.activatable_manager.process_content(post.content());
+            self.activatable_manager.process_post(&post);
         }
     }
 
@@ -438,6 +494,13 @@ impl TUI {
                 // For threaded view, we'd need more complex logic
                 // For now, just return None to keep it simple
                 None
+            }
+            ViewMode::Notifications => {
+                if self.navigator.selected_post < self.notification_feed.notifications.len() {
+                    Some(self.navigator.selected_post)
+                } else {
+                    None
+                }
             }
         }
     }
@@ -469,6 +532,9 @@ impl TUI {
                     super::activatable::ActivatableType::Hyperlink { url, .. } => {
                         self.status_message = Some(format!("Link: {url}"));
                     }
+                    super::activatable::ActivatableType::Mention { url, username } => {
+                        self.status_message = Some(format!("Mention: {username} ({url})"));
+                    }
                     super::activatable::ActivatableType::Block { block_type, is_collapsed } => {
                         let state = if *is_collapsed { "collapsed" } else { "expanded" };
                         self.status_message = Some(format!("Block: {block_type} ({state})"));
@@ -490,6 +556,9 @@ impl TUI {
                 match &element.element_type {
                     super::activatable::ActivatableType::Hyperlink { url, .. } => {
                         self.status_message = Some(format!("Link: {url}"));
+                    }
+                    super::activatable::ActivatableType::Mention { url, username } => {
+                        self.status_message = Some(format!("Mention: {username} ({url})"));
                     }
                     super::activatable::ActivatableType::Block { block_type, is_collapsed } => {
                         let state = if *is_collapsed { "collapsed" } else { "expanded" };

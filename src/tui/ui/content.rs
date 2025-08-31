@@ -2,7 +2,8 @@
 
 use crate::tui::activatable::{self, ActivatableCollector, ActivatableManager};
 use org_social_lib_rs::parser;
-use org_social_lib_rs::tokenizer::{Token, Tokenizer};
+use org_social_lib_rs::tokenizer::Token;
+use org_social_lib_rs::blocks::ActivatableElement;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -11,39 +12,113 @@ use ratatui::{
     Frame,
 };
 
-/// Convert a token to a styled span for ratatui, collecting hyperlinks
-fn token_to_span(token: Token, collector: &ActivatableCollector, activatable_manager: Option<&ActivatableManager>, line_num: usize, col_offset: &mut usize) -> Span<'static> {
+/// Process tokens from a post and convert them to Lines with proper styling and position tracking
+fn process_post_tokens(
+    post: &parser::Post,
+    collector: &ActivatableCollector,
+    activatable_manager: Option<&ActivatableManager>,
+    scroll_offset: usize,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Vec<Span<'static>>> = vec![];
+    let mut current_line: Vec<Span<'static>> = vec![];
+    let mut current_line_num = 0;
+    let mut current_col = 0;
+
+    // Process each token from the post
+    for token in post.tokens() {
+        let token_spans = token_to_spans(
+            token.clone(),
+            collector,
+            activatable_manager,
+            current_line_num,
+            &mut current_col,
+        );
+
+        for span in token_spans {
+            // Check if this span contains newlines
+            let text = &span.content;
+            if text.contains('\n') {
+                // Split span by newlines
+                let lines_in_text: Vec<&str> = text.split('\n').collect();
+                for (i, line_text) in lines_in_text.iter().enumerate() {
+                    if i == 0 {
+                        // First part goes to current line
+                        if !line_text.is_empty() {
+                            current_line.push(Span::styled(line_text.to_string(), span.style));
+                        }
+                    } else {
+                        // Complete current line and start a new one
+                        lines.push(current_line);
+                        current_line = vec![];
+                        current_line_num += 1;
+                        current_col = 0;
+                        
+                        if !line_text.is_empty() {
+                            current_line.push(Span::styled(line_text.to_string(), span.style));
+                            current_col += line_text.len();
+                        }
+                    }
+                }
+            } else {
+                // No newlines, just add to current line
+                current_col += text.len();
+                current_line.push(span);
+            }
+        }
+    }
+
+    // Don't forget the last line if it has content
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+
+    // Apply block styling and handle collapsed/expanded blocks
+    let blocks = post.blocks();
+    let styled_lines = apply_block_styling(lines, blocks, activatable_manager, collector);
+
+    // Apply scrolling
+    styled_lines
+        .into_iter()
+        .skip(scroll_offset)
+        .map(Line::from)
+        .collect()
+}
+
+/// Convert a single token to one or more styled spans
+fn token_to_spans(
+    token: Token,
+    collector: &ActivatableCollector,
+    activatable_manager: Option<&ActivatableManager>,
+    line_num: usize,
+    col_offset: &mut usize,
+) -> Vec<Span<'static>> {
     match token {
         Token::PlainText(text) => {
-            let span = Span::raw(text.clone());
             *col_offset += text.len();
-            span
+            vec![Span::raw(text)]
         }
         Token::Bold(text) => {
-            let span = Span::styled(text.clone(), Style::default().add_modifier(Modifier::BOLD));
             *col_offset += text.len();
-            span
+            vec![Span::styled(text, Style::default().add_modifier(Modifier::BOLD))]
         }
         Token::Italic(text) => {
-            let span = Span::styled(text.clone(), Style::default().add_modifier(Modifier::ITALIC));
             *col_offset += text.len();
-            span
+            vec![Span::styled(text, Style::default().add_modifier(Modifier::ITALIC))]
         }
         Token::BoldItalic(text) => {
-            let span = Span::styled(
-                text.clone(), 
+            *col_offset += text.len();
+            vec![Span::styled(
+                text,
                 Style::default()
                     .add_modifier(Modifier::BOLD)
-                    .add_modifier(Modifier::ITALIC)
-            );
-            *col_offset += text.len();
-            span
+                    .add_modifier(Modifier::ITALIC),
+            )]
         }
         Token::Link { url, description } => {
             let display_text = description.unwrap_or(url.clone());
             let start_col = *col_offset;
             let end_col = start_col + display_text.len();
-            
+
             // Add link to collector
             activatable::collect_hyperlink(
                 collector,
@@ -53,37 +128,154 @@ fn token_to_span(token: Token, collector: &ActivatableCollector, activatable_man
                 start_col,
                 end_col,
             );
-            
+
             *col_offset += display_text.len();
-            
+
             // Create styled span for the hyperlink with focus checking
-            activatable::create_hyperlink_span(display_text, &url, activatable_manager)
+            vec![activatable::create_hyperlink_span(
+                display_text,
+                &url,
+                activatable_manager,
+            )]
+        }
+        Token::Mention { url, username } => {
+            let display_text = if username.starts_with("@") {
+                username.clone()
+            } else {
+                format!("@{username}")
+            };
+            let start_col = *col_offset;
+            let end_col = start_col + display_text.len();
+
+            // Add mention to collector
+            activatable::collect_mention(
+                collector,
+                url.clone(),
+                username.clone(),
+                line_num,
+                start_col,
+                end_col,
+            );
+
+            *col_offset += display_text.len();
+
+            // Create styled span for the mention with focus checking
+            vec![activatable::create_mention_span(
+                display_text,
+                &url,
+                activatable_manager,
+            )]
         }
         Token::InlineCode(text) => {
-            let span = Span::styled(
-                text.clone(),
-                Style::default()
-                    .fg(Color::White)
-                    .bg(Color::DarkGray)
-            );
             *col_offset += text.len();
-            span
+            vec![Span::styled(
+                text,
+                Style::default().fg(Color::White).bg(Color::DarkGray),
+            )]
+        }
+        Token::Strikethrough(text) => {
+            *col_offset += text.len();
+            vec![Span::styled(
+                text,
+                Style::default().add_modifier(Modifier::CROSSED_OUT),
+            )]
+        }
+        Token::Underline(text) => {
+            *col_offset += text.len();
+            vec![Span::styled(
+                text,
+                Style::default().add_modifier(Modifier::UNDERLINED),
+            )]
         }
     }
 }
 
-/// Parse a line of text using the tokenizer and convert to styled spans
-fn parse_line_to_spans(line: &str, collector: &ActivatableCollector, activatable_manager: Option<&ActivatableManager>, line_num: usize) -> Vec<Span<'static>> {
-    let mut tokenizer = Tokenizer::new(line.to_string());
-    let tokens = tokenizer.tokenize();
-    let mut spans = Vec::new();
-    let mut col_offset = 0;
-    
-    for token in tokens {
-        spans.push(token_to_span(token, collector, activatable_manager, line_num, &mut col_offset));
+/// Apply block styling to lines based on post blocks
+fn apply_block_styling(
+    lines: Vec<Vec<Span<'static>>>,
+    blocks: &[ActivatableElement],
+    activatable_manager: Option<&ActivatableManager>,
+    collector: &ActivatableCollector,
+) -> Vec<Vec<Span<'static>>> {
+    let mut styled_lines = lines;
+
+    for block in blocks {
+        match block {
+            ActivatableElement::Block(org_block) => {
+                let start_line = block.start_line();
+                let end_line = block.end_line();
+                let is_collapsed = block.is_collapsed();
+
+                if is_collapsed {
+                    // Replace the block lines with a single collapsed line
+                    let summary = block.get_summary();
+                    
+                    // Add collapsed block to collector
+                    activatable::collect_block(
+                        collector,
+                        org_block.block_type.clone(),
+                        true,
+                        start_line,
+                        0,
+                        summary.len(),
+                        start_line,
+                    );
+
+                    // Replace block content with collapsed representation
+                    if start_line < styled_lines.len() {
+                        let collapsed_span = activatable::create_block_span(
+                            summary,
+                            start_line,
+                            activatable_manager,
+                        );
+                        
+                        styled_lines[start_line] = vec![collapsed_span];
+                        
+                        // Remove the lines that are collapsed (from start+1 to end)
+                        let lines_to_remove = (start_line + 1).min(styled_lines.len())
+                            ..=end_line.min(styled_lines.len().saturating_sub(1));
+                        for _ in lines_to_remove.clone() {
+                            if start_line + 1 < styled_lines.len() {
+                                styled_lines.remove(start_line + 1);
+                            }
+                        }
+                    }
+                } else {
+                    // Block is expanded - add styling to indicate it's a block
+                    // Add expanded block to collector (only once, on the start line)
+                    activatable::collect_block(
+                        collector,
+                        org_block.block_type.clone(),
+                        false,
+                        start_line,
+                        0,
+                        if start_line < styled_lines.len() {
+                            styled_lines[start_line].iter().map(|s| s.content.len()).sum()
+                        } else {
+                            0
+                        },
+                        start_line,
+                    );
+
+                    // Apply block focus styling if focused
+                    if let Some(manager) = activatable_manager {
+                        if manager.is_block_focused(start_line) {
+                            // Apply subtle background to all lines in the block
+                            for line_idx in start_line..=end_line.min(styled_lines.len().saturating_sub(1)) {
+                                if line_idx < styled_lines.len() {
+                                    for span in &mut styled_lines[line_idx] {
+                                        span.style = span.style.bg(Color::Rgb(40, 40, 50));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
-    
-    spans
+
+    styled_lines
 }
 
 /// Draw the current post content
@@ -150,128 +342,8 @@ pub fn draw_post_content(f: &mut Frame, area: Rect, post: Option<&parser::Post>,
 
         f.render_widget(header, content_chunks[0]);
 
-        // Process content with blocks and get the content to display
-        let display_content = if let Some(manager) = activatable_manager {
-            // Get processed content from the manager or process it now
-            let content = post.content();
-            if let Some(processed) = manager.get_processed_content() {
-                processed.to_string()
-            } else {
-                // This shouldn't happen in normal flow as manager should have processed content
-                content.to_string()
-            }
-        } else {
-            post.content().to_string()
-        };
-
-        // Render post content with scrolling using tokenized org-mode markup
-        let content_lines: Vec<Line> = display_content
-            .lines()
-            .skip(scroll_offset)
-            .enumerate()
-            .map(|(line_num, line)| {
-                let actual_line_num = line_num + scroll_offset;
-                
-                // Check if this line contains a collapsed block indicator
-                if line.trim_start().starts_with("[+]") {
-                    // This is a collapsed block, create a special styled span
-                    
-                    // Extract block type from the line (format: "[+] Code (rust) [...]")
-                    let block_type = if line.contains("Code") {
-                        "src".to_string()
-                    } else if line.contains("Quote") {
-                        "quote".to_string()
-                    } else if line.contains("Example") {
-                        "example".to_string()
-                    } else if line.contains("Verse") {
-                        "verse".to_string()
-                    } else {
-                        "block".to_string()
-                    };
-                    
-                    // Add the collapsed block to the collector so it can be navigated to
-                    activatable::collect_block(
-                        collector,
-                        block_type,
-                        true, // is_collapsed
-                        actual_line_num,
-                        0, // start_col
-                        line.len(), // end_col
-                        actual_line_num, // original_line (same in this case)
-                    );
-                    
-                    vec![activatable::create_block_span(line.to_string(), actual_line_num, activatable_manager)]
-                } else {
-                    // Check if this line is part of an expanded block
-                    let is_block_begin = line.trim_start().starts_with("#+begin_") || 
-                                        line.trim_start().starts_with("#+BEGIN_");
-                    let is_block_end = line.trim_start().starts_with("#+end_") || 
-                                      line.trim_start().starts_with("#+END_");
-                    
-                    if is_block_begin {
-                        // This is a block begin line - add to collector only once here
-                        let begin_prefix = if line.trim_start().starts_with("#+begin_") {
-                            "#+begin_"
-                        } else {
-                            "#+BEGIN_"
-                        };
-                        let after_begin = line.trim_start().strip_prefix(begin_prefix).unwrap_or("");
-                        let block_type = after_begin.split_whitespace().next().unwrap_or("block").to_lowercase();
-                        
-                        // Add the expanded block to the collector so it can be navigated to
-                        // Only add it once on the begin line, not on every line of the block
-                        activatable::collect_block(
-                            collector,
-                            block_type.clone(),
-                            false, // is_collapsed = false (expanded)
-                            actual_line_num,
-                            0, // start_col
-                            line.len(), // end_col
-                            actual_line_num, // original_line
-                        );
-                        
-                        // Check if this block is focused and apply highlighting
-                        let mut spans = parse_line_to_spans(line, collector, activatable_manager, actual_line_num);
-                        if let Some(manager) = activatable_manager {
-                            if manager.is_block_focused(actual_line_num) {
-                                // Apply block focus styling to the entire line
-                                spans = vec![activatable::create_block_span(line.to_string(), actual_line_num, Some(manager))];
-                            }
-                        }
-                        spans
-                    } else if is_block_end {
-                        // This is an end line - highlight if we're in a focused block
-                        let mut spans = parse_line_to_spans(line, collector, activatable_manager, actual_line_num);
-                        if let Some(manager) = activatable_manager {
-                            if manager.is_line_in_focused_block(actual_line_num) {
-                                spans = vec![activatable::create_block_span(line.to_string(), actual_line_num, Some(manager))];
-                            }
-                        }
-                        spans
-                    } else {
-                        // Regular line - check if it's within a focused expanded block
-                        let spans = parse_line_to_spans(line, collector, activatable_manager, actual_line_num);
-                        
-                        // If this line is within a focused expanded block, we still want to preserve
-                        // all the normal formatting (links, bold, etc.) but add a subtle background
-                        if let Some(manager) = activatable_manager {
-                            if manager.is_line_in_focused_block(actual_line_num) {
-                                // Apply subtle background to all spans in the line
-                                spans.into_iter().map(|mut span| {
-                                    span.style = span.style.bg(Color::Rgb(40, 40, 50)); // Very dark blue background
-                                    span
-                                }).collect()
-                            } else {
-                                spans
-                            }
-                        } else {
-                            spans
-                        }
-                    }
-                }
-            })
-            .map(Line::from)
-            .collect();
+        // Process post content using the new token-based approach
+        let content_lines = process_post_tokens(post, collector, activatable_manager, scroll_offset);
 
         let content = Paragraph::new(content_lines)
             .block(Block::default().borders(Borders::ALL).title("Content"))
