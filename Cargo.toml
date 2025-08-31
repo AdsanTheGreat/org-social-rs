@@ -1,6 +1,6 @@
 [package]
 name = "org-social-rs"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Adsan <me@adsan.dev>"]
 description = "A Rust-based CLI and TUI client for the Org-social decentralized social network"
@@ -12,7 +12,7 @@ keywords = ["cli", "tui", "social", "org-mode", "decentralized"]
 categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
-org-social-lib-rs = "0.2.0"
+org-social-lib-rs = "0.2.1"
 chrono = "0.4.41"
 tokio = { version = "1.0", features = ["full"] }
 clap = { version = "4.0", features = ["derive"] }

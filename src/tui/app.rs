@@ -283,7 +283,7 @@ impl TUI {
     pub fn start_reply(&mut self) {
         // Extract the required data from the current post first
         let (post_id, initial_tags) = if let Some(post) = self.current_post() {
-            (post.id().to_string(), post.tags().clone())
+            (post.full_id(), post.tags().clone())
         } else {
             return;
         };
