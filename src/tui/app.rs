@@ -386,9 +386,10 @@ impl TUI {
 
     /// Submit reply
     pub fn submit_reply(&mut self) {
-        if let Some(reply_state) = &self.reply_state {
-            if reply_state.is_ready_to_submit() {
-                match self.reply_manager.save_reply(reply_state) {
+        if let Some(reply_state_mut) = &mut self.reply_state {
+            reply_state_mut.finalize_tags_input(); // Remember tags when submitting reply
+            if reply_state_mut.is_ready_to_submit() {
+                match self.reply_manager.save_reply(reply_state_mut) {
                     Ok(success_message) => {
                         self.status_message = Some(success_message);
                     }
@@ -440,7 +441,8 @@ impl TUI {
 
     /// Submit new post
     pub fn submit_new_post(&mut self) {
-        if let Some(new_post_state) = &self.new_post_state {
+        if let Some(new_post_state) = self.new_post_state.as_mut() {
+            new_post_state.finalize_tags_input(); // Remember tags when submitting post
             if new_post_state.is_ready_to_submit() {
                 match self.new_post_manager.save_new_post(new_post_state) {
                     Ok(success_message) => {
