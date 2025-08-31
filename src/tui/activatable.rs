@@ -10,17 +10,7 @@ use ratatui::{
 use std::collections::HashMap;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use org_social_lib_rs::blocks::{ActivatableElement, process_content_with_blocks};
-
-/// Represents a hyperlink with its position and URL
-#[derive(Debug, Clone)]
-pub struct Hyperlink {
-    pub url: String,
-    pub display_text: String,
-    pub line: usize,
-    pub start_col: usize,
-    pub end_col: usize,
-}
+use org_social_lib_rs::blocks::ActivatableElement;
 
 /// Represents an activatable element's position in the rendered content
 #[derive(Debug, Clone)]
@@ -81,12 +71,6 @@ impl ActivatableManager {
         self.elements.clear();
         self.focused_element = None;
         self.next_id = 0;
-    }
-
-    pub fn process_content(&mut self, content: &str) -> String {
-        // For backwards compatibility, return the content as-is
-        // The new token-based approach will handle formatting in the UI layer
-        content.to_string()
     }
 
     pub fn process_post(&mut self, post: &org_social_lib_rs::parser::Post) {

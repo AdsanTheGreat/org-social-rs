@@ -483,30 +483,6 @@ impl TUI {
         }
     }
 
-    pub fn current_post_index(&self) -> Option<usize> {
-        match self.view_mode {
-            ViewMode::List => {
-                if self.navigator.selected_post < self.posts.len() {
-                    Some(self.navigator.selected_post)
-                } else {
-                    None
-                }
-            },
-            ViewMode::Threaded => {
-                // For threaded view, we'd need more complex logic
-                // For now, just return None to keep it simple
-                None
-            }
-            ViewMode::Notifications => {
-                if self.navigator.selected_post < self.notification_feed.notifications.len() {
-                    Some(self.navigator.selected_post)
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
     /// Update cursor blink state if enough time has passed
     pub fn update_cursor_blink(&mut self) {
         let now = Instant::now();
