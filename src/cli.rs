@@ -220,7 +220,7 @@ async fn handle_stats_command(
         
         if verbose {
             println!("{}", "Fetching remote feed statistics...".bright_black());
-            let feeds = network::get_feeds_from_profile(user_profile).await;
+            let feeds = network::get_feeds_from_profile_with_timeout(user_profile).await;
             let total_remote_posts: usize = feeds.iter().map(|(_, posts, _)| posts.len()).sum();
             println!("{} {}", "Total remote posts:".green(), total_remote_posts.to_string().yellow().bold());
             println!("{} {}", "Total posts in combined feed:".green(), 
