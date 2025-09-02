@@ -3,19 +3,21 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
+## [0.2.2] - 01.09.2025
+### Changed
+- org-social-lib-rs updated to 0.2.2
+- Feed fetching now has a 30s timeout
 ### Fixed
 - Reply and post submission applies non-confirmed tags
 
-## [0.2.1] - 31-08-2024
+## [0.2.1] - 31-08-2025
 
 Update to org-social-lib-rs 0.2.1 (no change in functionality)
 
 ### Fixed
 - Replying now uses the full reply id.
 
-## [0.2.0] - 31-08-2024
+## [0.2.0] - 31-08-2025
 
 Update to facilitate org-social-lib-rs 0.2.0 update
 
@@ -57,9 +59,9 @@ Update to facilitate org-social-lib-rs 0.2.0 update
   - Updated token processing in content.rs to use mention-specific functions
 
 
-## [0.1.1] - 27-08-2024
+## [0.1.1] - 27-08-2025
 - Fixed some issues with posts creation
-## [0.1.0] - 27-08-2024
+## [0.1.0] - 27-08-2025
 - Initial CLI and TUI implementation
 - Feed and threaded view support
 - Post and reply system
