@@ -36,6 +36,7 @@ pub enum EventResult {
     NextLink,
     PrevLink,
     ActivateLink,
+    CountPollVotes,
 }
 
 pub fn handle_key_event(key: KeyEvent, mode: &AppMode) -> EventResult {
@@ -60,6 +61,7 @@ fn handle_browsing_input(key: KeyEvent) -> EventResult {
         KeyCode::Char('r') => EventResult::StartReply,
         KeyCode::Char('n') => EventResult::StartNewPost,
         KeyCode::Char('h') | KeyCode::Char('?') => EventResult::ToggleHelp,
+        KeyCode::Char('v') => EventResult::CountPollVotes, // Count votes for poll in current post
         KeyCode::Char('l') => EventResult::NextLink,      // Navigate to next activatable element
         KeyCode::Char('L') => EventResult::PrevLink,      // Navigate to previous activatable element
         KeyCode::Enter | KeyCode::Tab => EventResult::ActivateLink, // Activate focused element (link or block)
@@ -144,6 +146,10 @@ pub fn handle_reply_enter(reply_state: &Option<reply::ReplyState>) -> EventResul
         Some(reply::ReplyField::Content) => {
             // In content field, plain Enter adds newline for convenience
             EventResult::ReplyNewline
+        }
+        Some(reply::ReplyField::PollOption) => {
+            // In poll option field, Enter submits the vote
+            EventResult::SubmitReply
         }
         _ => {
             // In mood field, plain Enter submits

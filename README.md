@@ -2,7 +2,7 @@
 
 A Rust-based CLI and TUI client for the [Org-social](https://github.com/tanrax/org-social) decentralized social network. 
 
-Current version is targeting 1.1 release.
+Current version is targeting 1.2 release.
 
 ## Overview
 

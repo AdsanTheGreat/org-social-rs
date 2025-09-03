@@ -272,6 +272,69 @@ fn apply_block_styling(
                     }
                 }
             }
+            ActivatableElement::Poll(poll) => {
+                let start_line = block.start_line();
+                let end_line = block.end_line();
+
+                // Check if we have existing poll data in the manager
+                let (vote_counts, total_votes, status) = if let Some(manager) = activatable_manager {
+                    manager.get_poll_data_for_line(start_line)
+                        .unwrap_or((None, 0, "Unknown".to_string()))
+                } else {
+                    (None, 0, "Unknown".to_string())
+                };
+
+                // Polls are not collapsible, just add them as activatable elements
+                // Add poll to collector for vote counting activation
+                if let Ok(mut elements) = collector.lock() {
+                    elements.push((
+                        super::super::activatable::ActivatableType::Poll { 
+                            question: poll.get_summary(),
+                            vote_counts,
+                            total_votes,
+                            status,
+                        },
+                        start_line,
+                        0,
+                        if start_line < styled_lines.len() {
+                            styled_lines[start_line].iter().map(|s| s.content.len()).sum()
+                        } else {
+                            0
+                        },
+                        start_line,
+                    ));
+                }
+
+                // Apply poll focus styling and add vote count information if available
+                if let Some(manager) = activatable_manager {
+                    if manager.is_poll_focused(start_line) {
+                        // Apply subtle background to all lines in the poll
+                        for line_idx in start_line..=end_line.min(styled_lines.len().saturating_sub(1)) {
+                            if line_idx < styled_lines.len() {
+                                for span in &mut styled_lines[line_idx] {
+                                    span.style = span.style.bg(Color::Rgb(50, 40, 60)); // Purple-ish for polls
+                                }
+                            }
+                        }
+                    }
+                    
+                    // If poll results are available, append them to the display
+                    if let Some(poll_info) = manager.get_poll_display_info(start_line) {
+                        // Add the poll results as additional lines after the poll content
+                        let poll_lines: Vec<&str> = poll_info.lines().collect();
+                        for (i, info_line) in poll_lines.iter().enumerate().skip(1) { // Skip first line (poll question)
+                            let result_line_idx = end_line + i;
+                            if result_line_idx < styled_lines.len() {
+                                // Insert vote count information
+                                styled_lines[result_line_idx].push(Span::styled(
+                                    format!(" [{}]", info_line),
+                                    Style::default().fg(Color::Cyan).add_modifier(Modifier::ITALIC)
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
