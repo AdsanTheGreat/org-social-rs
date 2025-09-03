@@ -5,16 +5,17 @@ use super::{
     events::{self, EventResult},
     modes::{AppMode, ViewMode},
     navigation::Navigator,
+    ui::poll_vote::PollVoteState,
 };
 use chrono::{Duration as ChronoDuration, Utc};
-use org_social_lib_rs::{feed, new_post, notifications, parser, reply, threading};
+use org_social_lib_rs::{feed, new_post, notifications, parser, poll, reply, threading};
 use std::time::Instant;
 
 /// Application state for the TUI
 pub struct TUI {
     /// All posts to display
     pub posts: Vec<parser::Post>,
-    /// Notification feed for the user
+    /// Notification feed
     pub notification_feed: notifications::NotificationFeed,
     /// Threaded view of posts
     pub thread_view: threading::ThreadView,
@@ -36,6 +37,8 @@ pub struct TUI {
     pub new_post_state: Option<new_post::NewPostState>,
     /// New post manager for saving new posts
     pub new_post_manager: new_post::NewPostManager,
+    /// Poll vote state (when voting on a poll)
+    pub poll_vote_state: Option<PollVoteState>,
     /// Status message to display
     pub status_message: Option<String>,
     /// Cursor blink state (true = visible, false = hidden)
@@ -74,7 +77,6 @@ impl TUI {
             // If user_only, we only have user posts, so no notifications
             Vec::new()
         } else {
-            // Clone the feed posts for notifications before moving them
             feed.posts.clone()
         };
         let notification_feed = notifications::NotificationFeed::create_notification_feed(
@@ -120,6 +122,7 @@ impl TUI {
             reply_manager: reply::ReplyManager::new(file_path),
             new_post_state: None,
             new_post_manager: new_post::NewPostManager::new(file_path),
+            poll_vote_state: None,
             status_message: None,
             cursor_visible: true,
             last_cursor_blink: Instant::now(),
@@ -267,6 +270,21 @@ impl TUI {
             EventResult::ActivateLink => {
                 self.activate_hyperlink();
             }
+            EventResult::CountPollVotes => {
+                self.count_poll_votes();
+            }
+            EventResult::StartPollVote => {
+                self.start_poll_vote();
+            }
+            EventResult::PollVoteUp => {
+                self.poll_vote_up();
+            }
+            EventResult::PollVoteDown => {
+                self.poll_vote_down();
+            }
+            EventResult::SubmitPollVote => {
+                self.submit_poll_vote();
+            }
         }
     }
 
@@ -298,6 +316,7 @@ impl TUI {
         self.mode = AppMode::Browsing;
         self.reply_state = None;
         self.new_post_state = None;
+        self.poll_vote_state = None;
         self.show_help = false;
         self.status_message = None;
     }
@@ -517,6 +536,24 @@ impl TUI {
                         let state = if *is_collapsed { "collapsed" } else { "expanded" };
                         self.status_message = Some(format!("Block: {block_type} ({state})"));
                     }
+                    super::activatable::ActivatableType::Poll { post_title: _, vote_counts, total_votes, status } => {
+                        let poll_status = if let Some(counts) = vote_counts {
+                            // Display vote counts if available
+                            let options_summary = if counts.len() <= 3 {
+                                counts.iter()
+                                    .map(|(option, votes)| format!("{}: {}", option, votes))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            } else {
+                                format!("{} options", counts.len())
+                            };
+                            format!("Poll: {} votes ({}), Status: {}", total_votes, options_summary, status)
+                        } else {
+                            // Fallback to basic poll info
+                            format!("Poll: Press 'v' to count votes")
+                        };
+                        self.status_message = Some(poll_status);
+                    }
                 }
             }
         } else {
@@ -542,6 +579,24 @@ impl TUI {
                         let state = if *is_collapsed { "collapsed" } else { "expanded" };
                         self.status_message = Some(format!("Block: {block_type} ({state})"));
                     }
+                    super::activatable::ActivatableType::Poll { post_title: _, vote_counts, total_votes, status } => {
+                        let poll_status = if let Some(counts) = vote_counts {
+                            // Display vote counts if available
+                            let options_summary = if counts.len() <= 3 {
+                                counts.iter()
+                                    .map(|(option, votes)| format!("{}: {}", option, votes))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            } else {
+                                format!("{} options", counts.len())
+                            };
+                            format!("Poll: {} votes ({}), Status: {}", total_votes, options_summary, status)
+                        } else {
+                            // Fallback to basic poll info
+                            format!("Poll: Press 'v' to count votes")
+                        };
+                        self.status_message = Some(poll_status);
+                    }
                 }
             }
         } else {
@@ -553,9 +608,14 @@ impl TUI {
     pub fn activate_hyperlink(&mut self) {
         // Update activatable manager from collector first
         self.activatable_manager.update_from_collector(&self.activatable_collector);
-        
-        if let Some(result_message) = self.activatable_manager.activate_focused() {
-            self.status_message = Some(result_message);
+
+        if let Some(result_message) = self.activatable_manager.activate_focused(&self.view_mode) {
+            // Check if we need to start poll voting
+            if result_message == "StartPollVote" {
+                self.start_poll_vote();
+            } else {
+                self.status_message = Some(result_message);
+            }
             
             // If we activated a block, refresh the processed content
             if let Some(focused) = self.activatable_manager.focused_element() {
@@ -565,6 +625,188 @@ impl TUI {
             }
         } else {
             self.status_message = Some("No element currently focused".to_string());
+        }
+    }
+
+    /// Count votes for the poll in the current post (only available in threaded view)
+    pub fn count_poll_votes(&mut self) {
+        // This functionality is only available in threaded view with access to ThreadNode
+        if self.view_mode != ViewMode::Threaded {
+            self.status_message = Some("Vote counting only available in threaded view (press 't' to switch)".to_string());
+            return;
+        }
+
+        // Get the current post and thread node
+        let (current_post, thread_node) = match self.get_current_thread_node() {
+            Some((post, node)) => (post, node),
+            None => {
+                self.status_message = Some("No post selected".to_string());
+                return;
+            }
+        };
+
+        // Check if the current post has a poll
+        if !poll::is_poll_post(current_post) {
+            self.status_message = Some("Current post does not contain a poll".to_string());
+            return;
+        }
+
+        // Get all reply posts from the thread node to count votes
+        let reply_posts: Vec<parser::Post> = thread_node.replies
+            .iter()
+            .flat_map(|reply_node| {
+                let mut posts = vec![reply_node.post.clone()];
+                posts.extend(self.collect_all_replies_recursive(reply_node));
+                posts
+            })
+            .collect();
+
+        // Count the votes using the org-social-lib-rs poll module
+        match poll::count_poll_votes(current_post, &reply_posts) {
+            Some(poll_result) => {
+                // Update the activatable manager with the poll results
+                self.activatable_manager.update_poll_results(&poll_result);
+                
+                // Display the poll results
+                let vote_summary = format!(
+                    "Poll Results: {} total votes, Status: {:?}",
+                    poll_result.total_votes,
+                    poll_result.status
+                );
+                
+                // You could also display individual option counts here
+                let mut detailed_results = vec![vote_summary];
+                for option in &poll_result.options {
+                    detailed_results.push(format!(
+                        "  • {}: {} votes",
+                        option.text,
+                        option.votes
+                    ));
+                }
+                
+                self.status_message = Some(detailed_results.join(" | "));
+                
+                // Force reprocessing of the current post content to update the display
+                self.process_current_post_content();
+            }
+            None => {
+                self.status_message = Some("Failed to count poll votes - invalid poll format".to_string());
+            }
+        }
+    }
+
+    /// Get the current thread node and post when in threaded view
+    fn get_current_thread_node(&self) -> Option<(&parser::Post, &threading::ThreadNode)> {
+        if self.thread_view.is_empty() {
+            return None;
+        }
+
+        let current_thread = &self.thread_view.roots[self.navigator.selected_thread];
+        let thread_posts = current_thread.flatten();
+        let current_post = thread_posts.get(self.navigator.selected_thread_post)?;
+        
+        // For simplicity, we return the root thread node
+        // In a more sophisticated implementation, you might want to find the exact node
+        Some((current_post, current_thread))
+    }
+
+    /// Recursively collect all reply posts from a thread node
+    fn collect_all_replies_recursive(&self, node: &threading::ThreadNode) -> Vec<parser::Post> {
+        let mut posts = Vec::new();
+        for reply in &node.replies {
+            posts.push(reply.post.clone());
+            posts.extend(self.collect_all_replies_recursive(reply));
+        }
+        posts
+    }
+
+    /// Start poll voting mode for the currently focused poll
+    pub fn start_poll_vote(&mut self) {
+        // Update activatable manager from collector first
+        self.activatable_manager.update_from_collector(&self.activatable_collector);
+
+        if let Some(focused) = self.activatable_manager.focused_element() {
+            if let super::activatable::ActivatableType::Poll { post_title, vote_counts, .. } = &focused.element_type {
+                // Extract poll options from vote_counts or parse from current post
+                let poll_options = if let Some(counts) = vote_counts {
+                    counts.iter().map(|(option, _)| option.clone()).collect()
+                } else {
+                    // If no vote counts, try to parse options from the current post
+                    if let Some(current_post) = self.current_post() {
+                        if let Some(poll) = poll::parse_poll_from_post(current_post) {
+                            poll.options.into_iter().map(|opt| opt.text).collect()
+                        } else {
+                            vec!["Option 1".to_string(), "Option 2".to_string()] // Fallback
+                        }
+                    } else {
+                        vec!["Option 1".to_string(), "Option 2".to_string()] // Fallback
+                    }
+                };
+
+                // Get the current post ID for creating the vote reply
+                let poll_post_id = if let Some(current_post) = self.current_post() {
+                    current_post.full_id()
+                } else {
+                    "unknown".to_string()
+                };
+
+                self.poll_vote_state = Some(PollVoteState::new(
+                    format!("Poll in: {}", post_title), // Use the post title as context
+                    poll_options,
+                    poll_post_id,
+                ));
+                self.mode = AppMode::PollVote;
+                self.status_message = Some("Select a poll option to vote for".to_string());
+            }
+        } else {
+            self.status_message = Some("No poll focused".to_string());
+        }
+    }
+
+    /// Move selection up in poll vote mode
+    pub fn poll_vote_up(&mut self) {
+        if let Some(poll_state) = &mut self.poll_vote_state {
+            poll_state.move_up();
+        }
+    }
+
+    /// Move selection down in poll vote mode
+    pub fn poll_vote_down(&mut self) {
+        if let Some(poll_state) = &mut self.poll_vote_state {
+            poll_state.move_down();
+        }
+    }
+
+    /// Submit the poll vote and create a vote reply
+    pub fn submit_poll_vote(&mut self) {
+        let (poll_post_id, selected_option) = if let Some(poll_state) = &self.poll_vote_state {
+            (poll_state.poll_post_id.clone(), poll_state.get_selected_option().cloned())
+        } else {
+            (String::new(), None)
+        };
+
+        if let Some(selected_option) = selected_option {
+            // Create a reply state for the poll vote with the selected option set in poll_option
+            let mut vote_reply_state = reply::ReplyState::new(
+                poll_post_id,
+                Some(vec![]), // Maybe copy tags from source post?
+            );
+            
+            vote_reply_state.poll_option = selected_option.clone();
+
+            // Switch to reply mode with the poll option pre-filled
+            self.reply_state = Some(vote_reply_state);
+            self.mode = AppMode::Reply;
+            self.poll_vote_state = None;
+            self.status_message = Some(format!(
+                "Vote for '{}' set in poll option field. Add content or press Ctrl+S to submit.",
+                selected_option
+            ));
+        } else {
+            // No option selected or no poll state, return to browsing mode
+            self.mode = AppMode::Browsing;
+            self.poll_vote_state = None;
+            self.status_message = Some("No option selected".to_string());
         }
     }
 }

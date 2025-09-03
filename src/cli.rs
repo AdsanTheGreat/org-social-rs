@@ -20,13 +20,13 @@ pub enum ColorOption {
 #[command(about = "An org-social reader")]
 #[command(version)]
 pub struct Cli {
-    /// Path to the user's .org social file
-    #[arg(short, long, default_value = "social.org")]
-    pub file: PathBuf,
-    
-    /// Enable verbose output
+    /// Path to the user's .org social file (overrides config)
     #[arg(short, long)]
-    pub verbose: bool,
+    pub file: Option<PathBuf>,
+    
+    /// Enable verbose output (overrides config)
+    #[arg(short, long)]
+    pub verbose: Option<bool>,
     
     /// Control colored output
     #[arg(long, value_enum, default_value = "auto")]
@@ -40,9 +40,9 @@ pub struct Cli {
 pub enum Commands {
     /// Read posts from your feed
     Feed {
-        /// Number of posts to show (default: 10)
-        #[arg(short, long, default_value = "10")]
-        count: usize,
+        /// Number of posts to show (uses config default if not specified)
+        #[arg(short, long)]
+        count: Option<usize>,
         
         /// Show only user's own posts (don't fetch from followed users)
         #[arg(long)]
@@ -98,11 +98,18 @@ impl Cli {
             }
         }
     }
+
+    /// Get file override from CLI args
+    pub fn file_override(&self) -> Option<PathBuf> {
+        self.file.clone()
+    }
     
-    pub async fn handle_command(&self, user_profile: &parser::Profile, user_posts: Vec<parser::Post>) {
+    pub async fn handle_command(&self, user_profile: &parser::Profile, user_posts: Vec<parser::Post>, config: &crate::config::Config) {
+        let verbose = self.verbose.unwrap_or(false);
         match &self.command {
             Commands::Feed { count, user_only, source, days } => {
-                handle_feed_command(user_profile, user_posts, *count, *user_only, source.clone(), *days, self.verbose).await;
+                let effective_count = count.unwrap_or(config.default_feed_count);
+                handle_feed_command(user_profile, user_posts, effective_count, *user_only, source.clone(), *days, verbose).await;
             }
             Commands::Profile => {
                 handle_profile_command(user_profile);
@@ -111,10 +118,10 @@ impl Cli {
                 handle_following_command(user_profile);
             }
             Commands::Stats => {
-                handle_stats_command(user_profile, &user_posts, self.verbose).await;
+                handle_stats_command(user_profile, &user_posts, verbose).await;
             }
             Commands::Tui { user_only, source, days } => {
-                handle_tui_command(&self.file, user_profile, user_posts, *user_only, source.clone(), *days).await;
+                handle_tui_command(&config.social_file, user_profile, user_posts, *user_only, source.clone(), *days).await;
             }
         }
     }

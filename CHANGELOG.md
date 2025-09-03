@@ -3,7 +3,46 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.2] - 01.09.2025
+## [0.3.0] 03-09-2025
+
+### Added
+- **Configuration System**: Added TOML-based configuration support using the `config` crate
+  - Default configuration file created in the user's config directory, in an `org-social-rs` subdirectory
+  - Configurable options: `social_file`, `default_feed_count`,
+  - Environment variable support with `ORG_SOCIAL_` prefix
+  - CLI arguments override config file settings where applicable
+  - Automatic creation of default config file on first run
+- **Poll System**: Added interactive poll functionality in TUI
+  - Polls are detected and displayed as activatable elements in posts
+  - Press Enter on a poll to open the poll voting interface
+  - Navigate poll options with arrow keys or j/k
+  - Selected poll option is automatically set in the `POLL_OPTION` field when creating a vote reply
+  - Seamless transition from poll voting to reply mode for adding additional content
+  - Vote submissions include both the selected option and any additional user content
+
+### Changed
+- **CLI Interface Updates**: Modified CLI argument structure to support config integration
+  - `--count` in feed command now uses config `default_feed_count` when not specified
+- **Library Update**: Updated org-social-lib-rs to version 0.3.1
+  - Added support for poll parsing and poll vote creation
+  - Enhanced reply system with poll_option field support
+
+### Technical Details
+- **New Dependencies**:
+  - Added `config` crate for TOML configuration file support
+  - Added `serde` crate with derive features for configuration serialization
+  - Added `dirs` crate for cross-platform config directory detection
+  - Added `toml` crate for TOML serialization support
+- **Poll Voting Implementation**:
+  - Added `AppMode::PollVote` mode to TUI state machine
+  - Created `PollVoteState` struct for managing poll option selection
+  - Implemented `EventResult::PollVoteUp`, `EventResult::PollVoteDown`, and `EventResult::SubmitPollVote` events
+  - Added `render_poll_vote()` UI component for poll option display
+  - Enhanced `ActivatableType::Poll` to include post title, vote counts, and poll status
+  - Integrated poll detection in content rendering using org-social-lib-rs poll parsing
+
+
+## [0.2.2] - 01-09-2025
 ### Changed
 - org-social-lib-rs updated to 0.2.2
 - Feed fetching now has a 30s timeout

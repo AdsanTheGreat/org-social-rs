@@ -162,8 +162,28 @@ pub fn format_post_colored(post: &parser::Post, profile: Option<&Profile>) -> St
         metadata.push(format!("{} {}", "Mood:".bright_black(), mood.yellow()));
     }
 
-    if let Some(poll_end) = post.poll_end() {
-        metadata.push(format!("{} {}", "Poll ends:".bright_black(), poll_end.yellow()));
+    if post.is_poll() {
+        if let Some(poll) = post.get_poll() {
+            let status_text = match poll.status {
+                org_social_lib_rs::poll::PollStatus::Active => "Active".green(),
+                org_social_lib_rs::poll::PollStatus::Ended => "Ended".red(),
+                org_social_lib_rs::poll::PollStatus::Invalid => "Invalid".yellow(),
+            };
+            metadata.push(format!("{} {}", "Poll Status:".bright_black(), status_text));
+            
+            if let Some(poll_end) = &poll.poll_end {
+                metadata.push(format!("{} {}", "Poll ends:".bright_black(), poll_end.yellow()));
+            }
+            
+            if poll.total_votes > 0 {
+                metadata.push(format!("{} {}", "Total votes:".bright_black(), poll.total_votes.to_string().cyan()));
+            }
+        }
+    } else {
+        // Legacy poll display for backwards compatibility
+        if let Some(poll_end) = post.poll_end() {
+            metadata.push(format!("{} {}", "Poll ends:".bright_black(), poll_end.yellow()));
+        }
     }
 
     if let Some(poll_option) = post.poll_option() {

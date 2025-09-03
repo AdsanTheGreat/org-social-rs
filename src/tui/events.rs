@@ -36,6 +36,11 @@ pub enum EventResult {
     NextLink,
     PrevLink,
     ActivateLink,
+    CountPollVotes,
+    StartPollVote,
+    PollVoteUp,
+    PollVoteDown,
+    SubmitPollVote,
 }
 
 pub fn handle_key_event(key: KeyEvent, mode: &AppMode) -> EventResult {
@@ -44,6 +49,7 @@ pub fn handle_key_event(key: KeyEvent, mode: &AppMode) -> EventResult {
         AppMode::Reply => handle_reply_input(key),
         AppMode::NewPost => handle_new_post_input(key),
         AppMode::Help => handle_help_input(key),
+        AppMode::PollVote => handle_poll_vote_input(key),
     }
 }
 
@@ -60,6 +66,7 @@ fn handle_browsing_input(key: KeyEvent) -> EventResult {
         KeyCode::Char('r') => EventResult::StartReply,
         KeyCode::Char('n') => EventResult::StartNewPost,
         KeyCode::Char('h') | KeyCode::Char('?') => EventResult::ToggleHelp,
+        KeyCode::Char('v') => EventResult::CountPollVotes, // Count votes for poll in current post
         KeyCode::Char('l') => EventResult::NextLink,      // Navigate to next activatable element
         KeyCode::Char('L') => EventResult::PrevLink,      // Navigate to previous activatable element
         KeyCode::Enter | KeyCode::Tab => EventResult::ActivateLink, // Activate focused element (link or block)
@@ -145,6 +152,10 @@ pub fn handle_reply_enter(reply_state: &Option<reply::ReplyState>) -> EventResul
             // In content field, plain Enter adds newline for convenience
             EventResult::ReplyNewline
         }
+        Some(reply::ReplyField::PollOption) => {
+            // In poll option field, Enter submits the vote
+            EventResult::SubmitReply
+        }
         _ => {
             // In mood field, plain Enter submits
             EventResult::SubmitReply
@@ -164,5 +175,15 @@ pub fn handle_new_post_enter(new_post_state: &Option<new_post::NewPostState>) ->
             // In other fields, plain Enter submits
             EventResult::SubmitNewPost
         }
+    }
+}
+
+fn handle_poll_vote_input(key: KeyEvent) -> EventResult {
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Esc => EventResult::Cancel,
+        KeyCode::Char('j') | KeyCode::Down => EventResult::PollVoteDown,
+        KeyCode::Char('k') | KeyCode::Up => EventResult::PollVoteUp,
+        KeyCode::Enter => EventResult::SubmitPollVote,
+        _ => EventResult::Continue,
     }
 }

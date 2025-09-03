@@ -33,6 +33,7 @@ pub fn draw_help(f: &mut Frame, area: Rect, scroll_offset: u16) {
         Line::from("Actions:"),
         Line::from("  r    - Reply to current post"),
         Line::from("  n    - Create new post"),
+        Line::from("  v    - Count votes for poll (threaded view only)"),
         Line::from("  q    - Quit application"),
         Line::from(""),
         Line::from("Hyperlinks/Mentions/Blocks:"),

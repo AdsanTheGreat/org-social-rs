@@ -33,6 +33,9 @@ pub fn draw_status_area(f: &mut Frame, area: Rect, mode: &AppMode, view_mode: &V
         AppMode::Help => {
             Text::from("Showing help - press h or Esc to close")
         }
+        AppMode::PollVote => {
+            Text::from("Poll voting mode - use j/k to select, Enter to vote, Esc to cancel")
+        }
     };
 
     let status = Paragraph::new(text)
