@@ -13,13 +13,14 @@ org-social-rs provides both command-line and terminal user interface tools for i
 - **CLI Interface**: View feeds, filter posts, get some stats
 - **TUI Interface**: Interactive terminal-based interface for browsing and navigating social feeds, powered by [ratatui](https://github.com/ratatui-org/ratatui)
 - **Feed & Threaded view**: See posts chronologically or in a threaded view
+- **Notification view**: See where you were mentioned/replied to
 - **Post & Reply System**: Create and save new posts and replies to conversations
+- **Poll system**: Display, counting votes (limited to thread view), replies (powered by reply system)
 
 ## TODO
 Somewhat paired to the lib's features - as it's todo gets fullfilled, the same features should land here where applicable. 
 
 In no particular order:
-- File based configuration
 - Search & filter in the tui
 - Formatting improvements
 - Automatic remote feeds sync - powered by pre- and post- hooks, most likely bash commands from config. Or built-in support for a particular tool users prefer.
@@ -58,6 +59,15 @@ cargo install --path .
 
 ## Usage
 
+The configuration file is in the default config directory -> org-social-rs folder, in a straightforward .toml format
+Currently, setting default file/feed count is supported.
+
+The config options can be overriden by their respective cli flags, for example:
+```bash
+# This always uses the file you provide here, ignoring the one in the config
+org-social-rs --file path/to/social.org tui
+```
+
 ### CLI Mode
 
 Meant mostly for integrating as, for example, part of a bash script. 
@@ -67,13 +77,13 @@ CLI does not yet have all TUI features for displaying posts and feeds, or creati
 
 ```bash
 # View feed with latest posts
-org-social-rs --file path/to/social.org feed
+org-social-rs feed
 
 # Limit number of posts
-org-social-rs --file path/to/social.org feed --count 10
+org-social-rs --count 10
 
 # Filter posts from recent days
-org-social-rs --file path/to/social.org feed --days 7
+org-social-rs feed --days 7
 ```
 
 ### TUI Mode
@@ -82,12 +92,13 @@ Meant to serve as an actual client, exposing most features.
 
 ```bash
 # Launch interactive terminal interface
-org-social-rs --file path/to/social.org tui
+org-social-rs tui
 ```
 
 ## Library
 
 This project uses the [org-social-lib-rs](https://github.com/AdsanTheGreat/org-social-lib-rs) library for core functionality. If you want to integrate org-social into something, build a specific client (maybe a real gui?), feel free to check it out.
+
 ## Contributing
 
 Report issues (there are probably a lot of them), submit pull requests, help is welcome.
