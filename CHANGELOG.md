@@ -12,10 +12,20 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
   - Environment variable support with `ORG_SOCIAL_` prefix
   - CLI arguments override config file settings where applicable
   - Automatic creation of default config file on first run
+- **Poll System**: Added interactive poll functionality in TUI
+  - Polls are detected and displayed as activatable elements in posts
+  - Press Enter on a poll to open the poll voting interface
+  - Navigate poll options with arrow keys or j/k
+  - Selected poll option is automatically set in the `POLL_OPTION` field when creating a vote reply
+  - Seamless transition from poll voting to reply mode for adding additional content
+  - Vote submissions include both the selected option and any additional user content
 
 ### Changed
 - **CLI Interface Updates**: Modified CLI argument structure to support config integration
   - `--count` in feed command now uses config `default_feed_count` when not specified
+- **Library Update**: Updated org-social-lib-rs to version 0.3.1
+  - Added support for poll parsing and poll vote creation
+  - Enhanced reply system with poll_option field support
 
 ### Technical Details
 - **New Dependencies**:
@@ -23,6 +33,13 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
   - Added `serde` crate with derive features for configuration serialization
   - Added `dirs` crate for cross-platform config directory detection
   - Added `toml` crate for TOML serialization support
+- **Poll Voting Implementation**:
+  - Added `AppMode::PollVote` mode to TUI state machine
+  - Created `PollVoteState` struct for managing poll option selection
+  - Implemented `EventResult::PollVoteUp`, `EventResult::PollVoteDown`, and `EventResult::SubmitPollVote` events
+  - Added `render_poll_vote()` UI component for poll option display
+  - Enhanced `ActivatableType::Poll` to include post title, vote counts, and poll status
+  - Integrated poll detection in content rendering using org-social-lib-rs poll parsing
 
 
 ## [0.2.2] - 01-09-2025

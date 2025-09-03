@@ -401,6 +401,14 @@ pub fn draw_post_content(f: &mut Frame, area: Rect, post: Option<&parser::Post>,
             ]));
         }
 
+        // Add poll option if present
+        if let Some(poll_option) = post.poll_option() {
+            header_lines.push(Line::from(vec![
+                Span::styled("Poll option: ", Style::default().fg(Color::Gray)),
+                Span::styled(poll_option, Style::default().fg(Color::Yellow)),
+            ]));
+        }
+
         header_lines.push(Line::from(""));
 
         // Split content area for header and content
