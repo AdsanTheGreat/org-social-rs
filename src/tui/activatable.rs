@@ -105,8 +105,9 @@ impl ActivatableManager {
         // Get a short title from the post content (first 30 characters)
         let post_title = {
             let content = post.content();
-            if content.len() > 30 {
-                format!("{}...", &content[..30])
+            if content.chars().count() > 30 {
+                let truncated: String = content.chars().take(30).collect();
+                format!("{}...", truncated)
             } else {
                 content.to_string()
             }
