@@ -74,7 +74,7 @@ fn process_post_tokens(
 
     // Apply block styling and handle collapsed/expanded blocks
     let blocks = post.blocks();
-    let styled_lines = apply_block_styling(lines, blocks, activatable_manager, collector);
+    let styled_lines = apply_block_styling(lines, blocks, post, activatable_manager, collector);
 
     // Apply scrolling
     styled_lines
@@ -194,6 +194,7 @@ fn token_to_spans(
 fn apply_block_styling(
     lines: Vec<Vec<Span<'static>>>,
     blocks: &[ActivatableElement],
+    post: &parser::Post,
     activatable_manager: Option<&ActivatableManager>,
     collector: &ActivatableCollector,
 ) -> Vec<Vec<Span<'static>>> {
@@ -272,7 +273,7 @@ fn apply_block_styling(
                     }
                 }
             }
-            ActivatableElement::Poll(poll) => {
+            ActivatableElement::Poll(_poll) => {
                 let start_line = block.start_line();
                 let end_line = block.end_line();
 
@@ -287,9 +288,19 @@ fn apply_block_styling(
                 // Polls are not collapsible, just add them as activatable elements
                 // Add poll to collector for vote counting activation
                 if let Ok(mut elements) = collector.lock() {
+                    // Get a short title from the post content (first 30 characters)
+                    let post_title = {
+                        let content = post.content();
+                        if content.len() > 30 {
+                            format!("{}...", &content[..30])
+                        } else {
+                            content.to_string()
+                        }
+                    };
+                    
                     elements.push((
                         super::super::activatable::ActivatableType::Poll { 
-                            question: poll.get_summary(),
+                            post_title,
                             vote_counts,
                             total_votes,
                             status,

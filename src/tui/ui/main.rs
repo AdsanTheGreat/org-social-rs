@@ -3,7 +3,7 @@
 use super::super::activatable::{ActivatableCollector, ActivatableManager};
 use super::super::modes::{AppMode, ViewMode};
 use super::super::navigation::Navigator;
-use super::{content, help, new_post, post_list, reply, status};
+use super::{content, help, new_post, poll_vote, post_list, reply, status};
 use org_social_lib_rs::{new_post as new_post_module, notifications, parser, reply as reply_module, threading};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -22,6 +22,7 @@ pub fn draw_ui(
     current_post: Option<&parser::Post>,
     reply_state: &Option<reply_module::ReplyState>,
     new_post_state: &Option<new_post_module::NewPostState>,
+    poll_vote_state: &Option<poll_vote::PollVoteState>,
     status_message: &Option<String>,
     cursor_visible: bool,
     help_scroll: u16,
@@ -42,6 +43,11 @@ pub fn draw_ui(
         AppMode::NewPost => {
             if let Some(new_post_state) = new_post_state {
                 new_post::draw_new_post_window(f, size, new_post_state, cursor_visible);
+            }
+        }
+        AppMode::PollVote => {
+            if let Some(poll_vote_state) = poll_vote_state {
+                poll_vote::render_poll_vote(f, size, poll_vote_state);
             }
         }
         _ => {

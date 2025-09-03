@@ -37,6 +37,10 @@ pub enum EventResult {
     PrevLink,
     ActivateLink,
     CountPollVotes,
+    StartPollVote,
+    PollVoteUp,
+    PollVoteDown,
+    SubmitPollVote,
 }
 
 pub fn handle_key_event(key: KeyEvent, mode: &AppMode) -> EventResult {
@@ -45,6 +49,7 @@ pub fn handle_key_event(key: KeyEvent, mode: &AppMode) -> EventResult {
         AppMode::Reply => handle_reply_input(key),
         AppMode::NewPost => handle_new_post_input(key),
         AppMode::Help => handle_help_input(key),
+        AppMode::PollVote => handle_poll_vote_input(key),
     }
 }
 
@@ -170,5 +175,15 @@ pub fn handle_new_post_enter(new_post_state: &Option<new_post::NewPostState>) ->
             // In other fields, plain Enter submits
             EventResult::SubmitNewPost
         }
+    }
+}
+
+fn handle_poll_vote_input(key: KeyEvent) -> EventResult {
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Esc => EventResult::Cancel,
+        KeyCode::Char('j') | KeyCode::Down => EventResult::PollVoteDown,
+        KeyCode::Char('k') | KeyCode::Up => EventResult::PollVoteUp,
+        KeyCode::Enter => EventResult::SubmitPollVote,
+        _ => EventResult::Continue,
     }
 }

@@ -6,6 +6,7 @@ pub enum AppMode {
     Reply,
     NewPost,
     Help,
+    PollVote,
 }
 
 #[derive(Clone, PartialEq)]

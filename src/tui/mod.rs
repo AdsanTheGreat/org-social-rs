@@ -83,6 +83,7 @@ async fn run_app<B: ratatui::backend::Backend>(
                 app.current_post(),
                 &app.reply_state,
                 &app.new_post_state,
+                &app.poll_vote_state,
                 &app.status_message,
                 app.cursor_visible,
                 app.help_scroll,

@@ -29,7 +29,7 @@ pub enum ActivatableType {
     Mention { url: String, username: String },
     Block { block_type: String, is_collapsed: bool },
     Poll { 
-        question: String, 
+        post_title: String, // First characters of the post title
         vote_counts: Option<Vec<(String, usize)>>, // (option_text, vote_count) pairs
         total_votes: usize,
         status: String, // "Active", "Closed", etc.
@@ -87,7 +87,7 @@ impl ActivatableManager {
                 ActivatableType::Hyperlink { url, .. } => format!("hyperlink:{url}"),
                 ActivatableType::Mention { url, .. } => format!("mention:{url}"),
                 ActivatableType::Block { block_type, .. } => format!("block:{}:{}", block_type, pos.original_line),
-                ActivatableType::Poll { question, .. } => format!("poll:{}:{}", question, pos.original_line),
+                ActivatableType::Poll { post_title, .. } => format!("poll:{}:{}", post_title, pos.original_line),
             });
 
         // Save existing poll data before clearing
@@ -102,6 +102,16 @@ impl ActivatableManager {
 
         self.clear();
 
+        // Get a short title from the post content (first 30 characters)
+        let post_title = {
+            let content = post.content();
+            if content.len() > 30 {
+                format!("{}...", &content[..30])
+            } else {
+                content.to_string()
+            }
+        };
+
         // Process blocks from the post
         for element in post.blocks() {
             match element {
@@ -115,7 +125,7 @@ impl ActivatableManager {
                         is_collapsed,
                     );
                 }
-                org_social_lib_rs::blocks::ActivatableElement::Poll(poll) => {
+                org_social_lib_rs::blocks::ActivatableElement::Poll(_poll) => {
                     let start_line = element.start_line();
                     
                     // Check if we have saved poll data for this line
@@ -128,7 +138,7 @@ impl ActivatableManager {
                         start_line,
                         element.end_line(),
                         0,
-                        poll.get_summary(),
+                        post_title.clone(), // Use post title instead of poll summary
                         vote_counts,
                         total_votes,
                         status,
@@ -156,8 +166,8 @@ impl ActivatableManager {
                     ActivatableType::Block { block_type, is_collapsed } => {
                         self.add_block_element(*original_line, *line, *start_col, block_type.clone(), *is_collapsed);
                     }
-                    ActivatableType::Poll { question, vote_counts, total_votes, status } => {
-                        self.add_poll_element(*original_line, *line, *start_col, question.clone(), vote_counts.clone(), *total_votes, status.clone());
+                    ActivatableType::Poll { post_title, vote_counts, total_votes, status } => {
+                        self.add_poll_element(*original_line, *line, *start_col, post_title.clone(), vote_counts.clone(), *total_votes, status.clone());
                     }
                 }
             }
@@ -220,16 +230,16 @@ impl ActivatableManager {
         id
     }
 
-    pub fn add_poll_element(&mut self, original_line: usize, display_line: usize, start_col: usize, poll_summary: String, vote_counts: Option<Vec<(String, usize)>>, total_votes: usize, status: String) -> usize {
+    pub fn add_poll_element(&mut self, original_line: usize, display_line: usize, start_col: usize, post_title: String, vote_counts: Option<Vec<(String, usize)>>, total_votes: usize, status: String) -> usize {
         let id = self.next_id;
         self.next_id += 1;
         
         // Estimate end column for poll display
-        let end_col = start_col + poll_summary.len() + 10; // Rough estimate for poll display
+        let end_col = start_col + post_title.len() + 10; // Rough estimate for poll display
         
         self.elements.insert(id, ActivatablePosition {
             element_type: ActivatableType::Poll { 
-                question: poll_summary,
+                post_title,
                 vote_counts,
                 total_votes,
                 status,
@@ -264,8 +274,8 @@ impl ActivatableManager {
     pub fn get_poll_display_info(&self, original_line: usize) -> Option<String> {
         for (_, position) in &self.elements {
             if position.original_line == original_line {
-                if let ActivatableType::Poll { question, vote_counts, total_votes, status } = &position.element_type {
-                    let mut display_parts = vec![format!("Poll: {}", question)];
+                if let ActivatableType::Poll { post_title, vote_counts, total_votes, status } = &position.element_type {
+                    let mut display_parts = vec![format!("Poll in: {}", post_title)];
                     
                     if let Some(counts) = vote_counts {
                         for (option, votes) in counts {
@@ -429,7 +439,7 @@ impl ActivatableManager {
                     Some(format!("Toggled block at line {}", focused.original_line + 1))
                 }
                 ActivatableType::Poll { .. } => {
-                    Some("PLACEHOLDER for voting".to_string())
+                    Some("StartPollVote".to_string())
                 }
             }
         } else {
@@ -491,7 +501,7 @@ impl ActivatableManager {
                 ActivatableType::Hyperlink { url, .. } => format!("hyperlink:{url}"),
                 ActivatableType::Mention { url, .. } => format!("mention:{url}"),
                 ActivatableType::Block { block_type, .. } => format!("block:{}:{}", block_type, pos.original_line),
-                ActivatableType::Poll { question, .. } => format!("poll:{}:{}", question, pos.original_line),
+                ActivatableType::Poll { post_title, .. } => format!("poll:{}:{}", post_title, pos.original_line),
             };
             if key == focus_key {
                 self.focused_element = Some(id);
@@ -613,11 +623,11 @@ pub fn collect_block(collector: &ActivatableCollector, block_type: String, is_co
 }
 
 /// Add a poll element to the collector during rendering
-pub fn collect_poll(collector: &ActivatableCollector, question: String, line: usize, start_col: usize, end_col: usize, original_line: usize) {
+pub fn collect_poll(collector: &ActivatableCollector, post_title: String, line: usize, start_col: usize, end_col: usize, original_line: usize) {
     if let Ok(mut elements) = collector.lock() {
         elements.push((
             ActivatableType::Poll { 
-                question,
+                post_title,
                 vote_counts: None, // Initial state - no vote counts yet
                 total_votes: 0,    // Initial total votes
                 status: "Unknown".to_string(), // Initial status
