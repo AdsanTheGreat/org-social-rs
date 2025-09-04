@@ -3,6 +3,27 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Field Reset Functionality**: Added F2 key binding to reset all form fields
+  - Works in both reply and new post modes
+  - Clears all field content and resets cursor positions
+
+### Changed
+- **Form State Management**: Reply and new post states are now persistent in memory
+  - Replies reset when you start a reply to a different post
+
+### Technical Details
+- **New Module**: `src/tui/ui/text_input.rs`
+  - Contains shared text input rendering utilities
+  - Provides consistent styling and cursor handling across forms
+- **New TUI Fields**:
+  - Added `persistent_new_post_state: Option<new_post::NewPostState>`
+  - Added `persistent_reply_state: Option<reply::ReplyState>`
+  - Added `persistent_reply_post_id: Option<String>` to track which post the reply state belongs to
+- **New Event**: Added `EventResult::ResetFields` for F2 key functionality
+
 ## [0.3.0] 03-09-2025
 
 ### Added

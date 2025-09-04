@@ -49,6 +49,12 @@ pub struct TUI {
     pub activatable_manager: ActivatableManager,
     /// Activatable elements collector for gathering elements during rendering
     pub activatable_collector: ActivatableCollector,
+    /// Persistent new post state (kept between openings)
+    pub persistent_new_post_state: Option<new_post::NewPostState>,
+    /// Persistent reply state (kept between openings for same post)
+    pub persistent_reply_state: Option<reply::ReplyState>,
+    /// ID of the post that the persistent reply state is for
+    pub persistent_reply_post_id: Option<String>,
 }
 
 impl TUI {
@@ -128,6 +134,9 @@ impl TUI {
             last_cursor_blink: Instant::now(),
             activatable_manager: ActivatableManager::new(),
             activatable_collector: ActivatableManager::create_collector(),
+            persistent_new_post_state: None,
+            persistent_reply_state: None,
+            persistent_reply_post_id: None,
         };
 
         // Process the initial post content
@@ -285,6 +294,9 @@ impl TUI {
             EventResult::SubmitPollVote => {
                 self.submit_poll_vote();
             }
+            EventResult::ResetFields => {
+                self.reset_fields();
+            }
         }
     }
 
@@ -307,15 +319,38 @@ impl TUI {
         };
         
         self.mode = AppMode::Reply;
-        self.reply_state = Some(reply::ReplyState::new(post_id.clone(), initial_tags));
+        
+        // Check if we have a persistent reply state for the same post
+        if let Some(persistent_post_id) = &self.persistent_reply_post_id {
+            if *persistent_post_id == post_id && self.persistent_reply_state.is_some() {
+                // Reuse the existing state for the same post
+                self.reply_state = self.persistent_reply_state.take();
+            } else {
+                // Different post, reset and create new state
+                self.persistent_reply_state = None;
+                self.persistent_reply_post_id = Some(post_id.clone());
+                self.reply_state = Some(reply::ReplyState::new(post_id.clone(), initial_tags));
+            }
+        } else {
+            // First time replying, create new state
+            self.persistent_reply_post_id = Some(post_id.clone());
+            self.reply_state = Some(reply::ReplyState::new(post_id.clone(), initial_tags));
+        }
+        
         self.status_message = Some(format!("Replying to post {post_id}"));
     }
 
     /// Cancel current action and return to browsing
     pub fn cancel(&mut self) {
+        // Save current states to persistent storage before canceling
+        if let Some(reply_state) = self.reply_state.take() {
+            self.persistent_reply_state = Some(reply_state);
+        }
+        if let Some(new_post_state) = self.new_post_state.take() {
+            self.persistent_new_post_state = Some(new_post_state);
+        }
+        
         self.mode = AppMode::Browsing;
-        self.reply_state = None;
-        self.new_post_state = None;
         self.poll_vote_state = None;
         self.show_help = false;
         self.status_message = None;
@@ -411,6 +446,9 @@ impl TUI {
                 match self.reply_manager.save_reply(reply_state_mut) {
                     Ok(success_message) => {
                         self.status_message = Some(success_message);
+                        // Clear persistent state on successful submission
+                        self.persistent_reply_state = None;
+                        self.persistent_reply_post_id = None;
                     }
                     Err(e) => {
                         self.status_message = Some(format!("Error saving reply: {e}"));
@@ -424,8 +462,37 @@ impl TUI {
     /// Start creating a new post
     pub fn start_new_post(&mut self) {
         self.mode = AppMode::NewPost;
-        self.new_post_state = Some(new_post::NewPostState::new(None));
+        
+        // Check if we have a persistent new post state
+        if let Some(persistent_state) = self.persistent_new_post_state.take() {
+            // Reuse the existing state
+            self.new_post_state = Some(persistent_state);
+        } else {
+            // Create new state
+            self.new_post_state = Some(new_post::NewPostState::new(None));
+        }
+        
         self.status_message = Some("Creating new post".to_string());
+    }
+
+    /// Reset all fields in the current form
+    pub fn reset_fields(&mut self) {
+        match self.mode {
+            AppMode::Reply => {
+                if let Some(post) = self.current_post() {
+                    let (post_id, initial_tags) = (post.full_id(), post.tags().clone());
+                    self.reply_state = Some(reply::ReplyState::new(post_id, initial_tags));
+                    self.persistent_reply_state = None; // Clear persistent state
+                    self.status_message = Some("Reply fields reset".to_string());
+                }
+            }
+            AppMode::NewPost => {
+                self.new_post_state = Some(new_post::NewPostState::new(None));
+                self.persistent_new_post_state = None; // Clear persistent state
+                self.status_message = Some("New post fields reset".to_string());
+            }
+            _ => {}
+        }
     }
 
     pub fn handle_new_post_input(&mut self, c: char) {
@@ -466,6 +533,8 @@ impl TUI {
                 match self.new_post_manager.save_new_post(new_post_state) {
                     Ok(success_message) => {
                         self.status_message = Some(success_message);
+                        // Clear persistent state on successful submission
+                        self.persistent_new_post_state = None;
                     }
                     Err(e) => {
                         self.status_message = Some(format!("Error saving new post: {e}"));

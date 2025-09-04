@@ -41,6 +41,7 @@ pub enum EventResult {
     PollVoteUp,
     PollVoteDown,
     SubmitPollVote,
+    ResetFields,
 }
 
 pub fn handle_key_event(key: KeyEvent, mode: &AppMode) -> EventResult {
@@ -99,6 +100,7 @@ fn handle_reply_input(key: KeyEvent) -> EventResult {
         KeyCode::Tab => EventResult::NextReplyField,
         KeyCode::BackTab => EventResult::PrevReplyField,
         KeyCode::F(1) => EventResult::RemoveLastTag, // F1 to remove last tag
+        KeyCode::F(2) => EventResult::ResetFields, // F2 to reset all fields
         KeyCode::Esc => EventResult::Cancel,
         _ => EventResult::Continue,
     }
@@ -116,18 +118,16 @@ fn handle_new_post_input(key: KeyEvent) -> EventResult {
         }
         KeyCode::Backspace => EventResult::NewPostBackspace,
         KeyCode::Enter => {
-            // Handle different Enter key combinations
             if key.modifiers.contains(KeyModifiers::SHIFT) {
-                // Shift+Enter for newline
                 EventResult::NewPostNewline
             } else {
-                // Plain Enter behavior depends on current field - this will be handled in the app
                 EventResult::FinalizeTags
             }
         }
         KeyCode::Tab => EventResult::NextNewPostField,
         KeyCode::BackTab => EventResult::PrevNewPostField,
         KeyCode::F(1) => EventResult::RemoveLastTag, // F1 to remove last tag
+        KeyCode::F(2) => EventResult::ResetFields, // F2 to reset all fields
         KeyCode::Esc => EventResult::Cancel,
         _ => EventResult::Continue,
     }
@@ -149,16 +149,14 @@ pub fn handle_reply_enter(reply_state: &Option<reply::ReplyState>) -> EventResul
     match reply_state.as_ref().map(|rs| &rs.current_field) {
         Some(reply::ReplyField::Tags) => EventResult::FinalizeTags,
         Some(reply::ReplyField::Content) => {
-            // In content field, plain Enter adds newline for convenience
             EventResult::ReplyNewline
         }
         Some(reply::ReplyField::PollOption) => {
-            // In poll option field, Enter submits the vote
             EventResult::SubmitReply
         }
         _ => {
-            // In mood field, plain Enter submits
-            EventResult::SubmitReply
+            // In mood field, plain Enter goes to the next field
+            EventResult::NextReplyField
         }
     }
 }
@@ -172,8 +170,8 @@ pub fn handle_new_post_enter(new_post_state: &Option<new_post::NewPostState>) ->
             EventResult::NewPostNewline
         }
         _ => {
-            // In other fields, plain Enter submits
-            EventResult::SubmitNewPost
+            // In other fields, plain Enter goes to the next field
+            EventResult::NextNewPostField
         }
     }
 }
