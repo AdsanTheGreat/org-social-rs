@@ -1,7 +1,7 @@
 //! Post content display UI component.
 
 use crate::tui::activatable::{self, ActivatableCollector, ActivatableManager};
-use org_social_lib_rs::parser;
+use org_social_lib_rs::{parser, post::PostType};
 use org_social_lib_rs::tokenizer::Token;
 use org_social_lib_rs::blocks::ActivatableElement;
 use ratatui::{
@@ -363,7 +363,7 @@ pub fn draw_post_content(f: &mut Frame, area: Rect, post: Option<&parser::Post>,
         // Create header with post metadata
         let author = post.author().as_ref().map(|s| s.as_str()).unwrap_or("unknown");
         let time_str = if let Some(time) = post.time() {
-            time.format("%Y-%m-%d %H:%M").to_string()
+            time.format("%d-%m-%Y %H:%M").to_string()
         } else {
             "no time".to_string()
         };
@@ -409,29 +409,57 @@ pub fn draw_post_content(f: &mut Frame, area: Rect, post: Option<&parser::Post>,
             ]));
         }
 
+        // Add mood if present
+        if let Some(mood) = post.mood() {
+            header_lines.push(Line::from(vec![
+                Span::styled("Mood: ", Style::default().fg(Color::Gray)),
+                Span::styled(mood, Style::default().fg(Color::Green)),
+            ]));
+        }
+
         header_lines.push(Line::from(""));
 
-        // Split content area for header and content
-        let content_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(header_lines.len() as u16 + 1), Constraint::Min(1)].as_ref())
-            .split(area);
+        match post.post_type() {
+            PostType::Reaction => {
+                // Render only header area for reactions
+                let header = Paragraph::new(header_lines)
+                    .block(Block::default().borders(Borders::ALL).title("Post Details"))
+                    .wrap(Wrap { trim: true });
 
-        // Render header
-        let header = Paragraph::new(header_lines)
-            .block(Block::default().borders(Borders::ALL).title("Post Details"))
-            .wrap(Wrap { trim: true });
+                f.render_widget(header, area);
+            }
+            PostType::SimplePollVote => {
+                // Render only header area for simple poll votes
+                let header = Paragraph::new(header_lines)
+                    .block(Block::default().borders(Borders::ALL).title("Post Details"))
+                    .wrap(Wrap { trim: true });
 
-        f.render_widget(header, content_chunks[0]);
+                f.render_widget(header, area);
+            }
+            _ => {
+                // Standard posts with content - split area for header and content
+                let content_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(header_lines.len() as u16 + 1), Constraint::Min(1)].as_ref())
+                    .split(area);
 
-        // Process post content using the new token-based approach
-        let content_lines = process_post_tokens(post, collector, activatable_manager, scroll_offset);
+                // Render header
+                let header = Paragraph::new(header_lines)
+                    .block(Block::default().borders(Borders::ALL).title("Post Details"))
+                    .wrap(Wrap { trim: true });
 
-        let content = Paragraph::new(content_lines)
-            .block(Block::default().borders(Borders::ALL).title("Content"))
-            .wrap(Wrap { trim: true });
+                f.render_widget(header, content_chunks[0]);
 
-        f.render_widget(content, content_chunks[1]);
+                // Process post content using the new token-based approach
+                let content_lines = process_post_tokens(post, collector, activatable_manager, scroll_offset);
+
+                let content = Paragraph::new(content_lines)
+                    .block(Block::default().borders(Borders::ALL).title("Content"))
+                    .wrap(Wrap { trim: true });
+
+                f.render_widget(content, content_chunks[1]);
+            }
+        }
     } else {
         let no_posts = Paragraph::new("No posts available")
             .block(Block::default().borders(Borders::ALL).title("Content"))

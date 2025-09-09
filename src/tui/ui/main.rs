@@ -5,7 +5,8 @@ use super::super::modes::{AppMode, ViewMode};
 use super::super::navigation::Navigator;
 use super::{content, help, new_post, poll_vote, post_list, reply, status};
 use crate::editor::{NewPostEditor, ReplyEditor};
-use org_social_lib_rs::{notifications, parser, threading};
+use org_social_lib_rs::post::Post;
+use org_social_lib_rs::{notifications, threading};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     Frame,
@@ -16,11 +17,11 @@ pub fn draw_ui(
     f: &mut Frame,
     mode: &AppMode,
     view_mode: &ViewMode,
-    posts: &[parser::Post],
+    posts: &[Post],
     notification_feed: &notifications::NotificationFeed,
     thread_view: &threading::ThreadView,
     navigator: &Navigator,
-    current_post: Option<&parser::Post>,
+    current_post: Option<&Post>,
     reply_state: &Option<ReplyEditor>,
     new_post_state: &Option<NewPostEditor>,
     poll_vote_state: &Option<poll_vote::PollVoteState>,
@@ -61,11 +62,11 @@ fn draw_main_ui(
     f: &mut Frame,
     area: Rect,
     view_mode: &ViewMode,
-    posts: &[parser::Post],
+    posts: &[Post],
     notification_feed: &notifications::NotificationFeed,
     thread_view: &threading::ThreadView,
     navigator: &Navigator,
-    current_post: Option<&parser::Post>,
+    current_post: Option<&Post>,
     mode: &AppMode,
     status_message: &Option<String>,
     collector: &ActivatableCollector,

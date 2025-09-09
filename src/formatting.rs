@@ -92,7 +92,7 @@ pub fn format_post_colored(post: &parser::Post, profile: Option<&Profile>) -> St
     // Add timestamp if available
     if let Some(time) = post.time() {
         header.push_str(&format!(" {} {}", "•".bright_black(), 
-            time.format("%Y-%m-%d %H:%M").to_string().bright_black()));
+            time.format("%d-%m-%Y %H:%M").to_string().bright_black()));
     }
 
     output.push_str(&format!("{} {}\n", 

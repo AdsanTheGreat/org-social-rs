@@ -47,7 +47,7 @@ fn draw_list_view(f: &mut Frame, area: Rect, posts: &[parser::Post], navigator: 
 
             let author = post.author().as_ref().map(|s| s.as_str()).unwrap_or("unknown");
             let time_str = if let Some(time) = post.time() {
-                time.format("%m-%d %H:%M").to_string()
+                time.format("%d-%m %H:%M").to_string()
             } else {
                 "no time".to_string()
             };
@@ -122,7 +122,7 @@ fn draw_threaded_view(f: &mut Frame, area: Rect, thread_view: &threading::Thread
 
             let author = post.author().as_ref().map(|s| s.as_str()).unwrap_or("unknown");
             let time_str = if let Some(time) = post.time() {
-                time.format("%m-%d %H:%M").to_string()
+                time.format("%d-%m %H:%M").to_string()
             } else {
                 "no time".to_string()
             };
