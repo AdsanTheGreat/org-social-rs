@@ -5,6 +5,7 @@ use std::fs;
 
 mod cli;
 mod config;
+mod editor;
 mod formatting;
 mod tui;
 

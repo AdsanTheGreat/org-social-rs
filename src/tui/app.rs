@@ -7,12 +7,15 @@ use super::{
     navigation::Navigator,
     ui::poll_vote::PollVoteState,
 };
+use crate::editor::{NewPostEditor, ReplyEditor};
 use chrono::{Duration as ChronoDuration, Utc};
-use org_social_lib_rs::{feed, new_post, notifications, parser, poll, reply, threading};
+use org_social_lib_rs::{feed, notifications, parser, poll, threading};
 use std::time::Instant;
 
 /// Application state for the TUI
 pub struct TUI {
+    /// Path to the org file 
+    pub file_path: std::path::PathBuf,
     /// All posts to display
     pub posts: Vec<parser::Post>,
     /// Notification feed
@@ -30,13 +33,9 @@ pub struct TUI {
     /// Current mode (browsing, reply, etc.)
     pub mode: AppMode,
     /// Reply state (when replying to a post)
-    pub reply_state: Option<reply::ReplyState>,
-    /// Reply manager for saving replies
-    pub reply_manager: reply::ReplyManager,
+    pub reply_state: Option<ReplyEditor>,
     /// New post state (when creating a new post)
-    pub new_post_state: Option<new_post::NewPostState>,
-    /// New post manager for saving new posts
-    pub new_post_manager: new_post::NewPostManager,
+    pub new_post_state: Option<NewPostEditor>,
     /// Poll vote state (when voting on a poll)
     pub poll_vote_state: Option<PollVoteState>,
     /// Status message to display
@@ -50,9 +49,9 @@ pub struct TUI {
     /// Activatable elements collector for gathering elements during rendering
     pub activatable_collector: ActivatableCollector,
     /// Persistent new post state (kept between openings)
-    pub persistent_new_post_state: Option<new_post::NewPostState>,
+    pub persistent_new_post_state: Option<NewPostEditor>,
     /// Persistent reply state (kept between openings for same post)
-    pub persistent_reply_state: Option<reply::ReplyState>,
+    pub persistent_reply_state: Option<ReplyEditor>,
     /// ID of the post that the persistent reply state is for
     pub persistent_reply_post_id: Option<String>,
 }
@@ -116,6 +115,7 @@ impl TUI {
         let thread_view = threading::ThreadView::from_posts(posts.clone());
 
         let mut app = TUI {
+            file_path: file_path.to_path_buf(),
             posts,
             notification_feed,
             thread_view,
@@ -125,9 +125,7 @@ impl TUI {
             help_scroll: 0,
             mode: AppMode::Browsing,
             reply_state: None,
-            reply_manager: reply::ReplyManager::new(file_path),
             new_post_state: None,
-            new_post_manager: new_post::NewPostManager::new(file_path),
             poll_vote_state: None,
             status_message: None,
             cursor_visible: true,
@@ -312,7 +310,7 @@ impl TUI {
     /// Start replying to the current post
     pub fn start_reply(&mut self) {
         // Extract the required data from the current post first
-        let (post_id, initial_tags) = if let Some(post) = self.current_post() {
+        let (post_id, _initial_tags) = if let Some(post) = self.current_post() {
             (post.full_id(), post.tags().clone())
         } else {
             return;
@@ -329,12 +327,12 @@ impl TUI {
                 // Different post, reset and create new state
                 self.persistent_reply_state = None;
                 self.persistent_reply_post_id = Some(post_id.clone());
-                self.reply_state = Some(reply::ReplyState::new(post_id.clone(), initial_tags));
+                self.reply_state = Some(ReplyEditor::new(self.current_post().unwrap()));
             }
         } else {
             // First time replying, create new state
             self.persistent_reply_post_id = Some(post_id.clone());
-            self.reply_state = Some(reply::ReplyState::new(post_id.clone(), initial_tags));
+            self.reply_state = Some(ReplyEditor::new(self.current_post().unwrap()));
         }
         
         self.status_message = Some(format!("Replying to post {post_id}"));
@@ -441,20 +439,22 @@ impl TUI {
     /// Submit reply
     pub fn submit_reply(&mut self) {
         if let Some(reply_state_mut) = &mut self.reply_state {
-            reply_state_mut.finalize_tags_input(); // Remember tags when submitting reply
-            if reply_state_mut.is_ready_to_submit() {
-                match self.reply_manager.save_reply(reply_state_mut) {
-                    Ok(success_message) => {
-                        self.status_message = Some(success_message);
+            let post = reply_state_mut.create_post();
+            if let Some(path_str) = self.file_path.to_str() {
+                match post.save_post(path_str) {
+                    Ok(_) => {
+                        self.status_message = Some("Reply saved successfully!".to_string());
                         // Clear persistent state on successful submission
                         self.persistent_reply_state = None;
                         self.persistent_reply_post_id = None;
+                        self.cancel();
                     }
                     Err(e) => {
-                        self.status_message = Some(format!("Error saving reply: {e}"));
+                        self.status_message = Some(format!("Error saving reply: {}", e));
                     }
                 }
-                self.cancel();
+            } else {
+                self.status_message = Some("Failed to save post: invalid file path".to_string());
             }
         }
     }
@@ -469,7 +469,7 @@ impl TUI {
             self.new_post_state = Some(persistent_state);
         } else {
             // Create new state
-            self.new_post_state = Some(new_post::NewPostState::new(None));
+            self.new_post_state = Some(NewPostEditor::new());
         }
         
         self.status_message = Some("Creating new post".to_string());
@@ -480,14 +480,13 @@ impl TUI {
         match self.mode {
             AppMode::Reply => {
                 if let Some(post) = self.current_post() {
-                    let (post_id, initial_tags) = (post.full_id(), post.tags().clone());
-                    self.reply_state = Some(reply::ReplyState::new(post_id, initial_tags));
+                    self.reply_state = Some(ReplyEditor::new(post));
                     self.persistent_reply_state = None; // Clear persistent state
                     self.status_message = Some("Reply fields reset".to_string());
                 }
             }
             AppMode::NewPost => {
-                self.new_post_state = Some(new_post::NewPostState::new(None));
+                self.new_post_state = Some(NewPostEditor::new());
                 self.persistent_new_post_state = None; // Clear persistent state
                 self.status_message = Some("New post fields reset".to_string());
             }
@@ -528,19 +527,21 @@ impl TUI {
     /// Submit new post
     pub fn submit_new_post(&mut self) {
         if let Some(new_post_state) = self.new_post_state.as_mut() {
-            new_post_state.finalize_tags_input(); // Remember tags when submitting post
-            if new_post_state.is_ready_to_submit() {
-                match self.new_post_manager.save_new_post(new_post_state) {
-                    Ok(success_message) => {
-                        self.status_message = Some(success_message);
+            let post = new_post_state.create_post();
+            if let Some(path_str) = self.file_path.to_str() {
+                match post.save_post(path_str) {
+                    Ok(_) => {
+                        self.status_message = Some("New post saved successfully!".to_string());
                         // Clear persistent state on successful submission
                         self.persistent_new_post_state = None;
+                        self.cancel();
                     }
                     Err(e) => {
-                        self.status_message = Some(format!("Error saving new post: {e}"));
+                        self.status_message = Some(format!("Error saving new post: {}", e));
                     }
                 }
-                self.cancel();
+            } else {
+                self.status_message = Some("Failed to save post: invalid file path".to_string());
             }
         }
     }
@@ -848,20 +849,17 @@ impl TUI {
 
     /// Submit the poll vote and create a vote reply
     pub fn submit_poll_vote(&mut self) {
-        let (poll_post_id, selected_option) = if let Some(poll_state) = &self.poll_vote_state {
-            (poll_state.poll_post_id.clone(), poll_state.get_selected_option().cloned())
+        let selected_option = if let Some(poll_state) = &self.poll_vote_state {
+            poll_state.get_selected_option().cloned()
         } else {
-            (String::new(), None)
+            None
         };
 
         if let Some(selected_option) = selected_option {
             // Create a reply state for the poll vote with the selected option set in poll_option
-            let mut vote_reply_state = reply::ReplyState::new(
-                poll_post_id,
-                Some(vec![]), // Maybe copy tags from source post?
-            );
-            
-            vote_reply_state.poll_option = selected_option.clone();
+            let mut vote_reply_state = ReplyEditor::new(self.current_post().unwrap());
+
+            vote_reply_state.set_poll_option(selected_option.clone());
 
             // Switch to reply mode with the poll option pre-filled
             self.reply_state = Some(vote_reply_state);

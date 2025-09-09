@@ -1,7 +1,7 @@
 //! Reply window UI component.
 
 use super::text_input::{self, ContentFieldConfig};
-use org_social_lib_rs::reply;
+use crate::editor::{ReplyEditor, ReplyField};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
@@ -11,7 +11,7 @@ use ratatui::{
 };
 
 /// Draw the reply window overlay
-pub fn draw_reply_window(f: &mut Frame, area: Rect, reply_state: &reply::ReplyState, cursor_visible: bool) {
+pub fn draw_reply_window(f: &mut Frame, area: Rect, reply_state: &ReplyEditor, cursor_visible: bool) {
     // Create centered reply window
     let reply_area = Rect {
         x: area.width / 8,
@@ -34,7 +34,10 @@ pub fn draw_reply_window(f: &mut Frame, area: Rect, reply_state: &reply::ReplySt
 
     // Header - show what we're replying to
     let header_text = vec![
-        Line::from(format!("Replying to: {}", reply_state.reply_to_id)),
+        Line::from(format!(
+            "Replying to: {}",
+            reply_state.post_state.reply_to.as_deref().unwrap_or("<unknown>")
+        )),
     ];
     let header = Paragraph::new(header_text)
         .block(Block::default().borders(Borders::ALL).title("Reply"))
@@ -59,11 +62,11 @@ pub fn draw_reply_window(f: &mut Frame, area: Rect, reply_state: &reply::ReplySt
     f.render_widget(help, reply_chunks[4]);
 }
 
-fn draw_content_field(f: &mut Frame, area: Rect, reply_state: &reply::ReplyState, cursor_visible: bool) {
+fn draw_content_field(f: &mut Frame, area: Rect, reply_state: &ReplyEditor, cursor_visible: bool) {
     let config = ContentFieldConfig {
-        text: &reply_state.content,
+        text: &reply_state.post_state.content,
         cursor_pos: reply_state.content_cursor,
-        is_active: reply_state.current_field == reply::ReplyField::Content,
+        is_active: reply_state.current_field == ReplyField::Content,
         cursor_visible,
         placeholder: "Type your reply here...",
         title_active: "Content (ACTIVE)",
@@ -73,13 +76,13 @@ fn draw_content_field(f: &mut Frame, area: Rect, reply_state: &reply::ReplyState
     text_input::draw_content_field(f, area, config);
 }
 
-fn draw_tags_field(f: &mut Frame, area: Rect, reply_state: &reply::ReplyState, cursor_visible: bool) {
-    let tags_title = if reply_state.current_field == reply::ReplyField::Tags {
+fn draw_tags_field(f: &mut Frame, area: Rect, reply_state: &ReplyEditor, cursor_visible: bool) {
+    let tags_title = if reply_state.current_field == ReplyField::Tags {
         "Tags (ACTIVE) - Space separated, # optional"
     } else {
         "Tags"
     };
-    let tags_style = if reply_state.current_field == reply::ReplyField::Tags {
+    let tags_style = if reply_state.current_field == ReplyField::Tags {
         Style::default().bg(Color::Black).fg(Color::Yellow)
     } else {
         Style::default().bg(Color::Black)
@@ -88,8 +91,8 @@ fn draw_tags_field(f: &mut Frame, area: Rect, reply_state: &reply::ReplyState, c
     let mut tags_lines = Vec::new();
     
     // Show existing tags
-    if !reply_state.tags.is_empty() {
-        let tags_display = reply_state.tags.iter()
+    if !reply_state.post_state.tags.is_empty() {
+        let tags_display = reply_state.post_state.tags.iter()
             .map(|tag| format!("#{tag}"))
             .collect::<Vec<_>>()
             .join(" ");
@@ -100,7 +103,7 @@ fn draw_tags_field(f: &mut Frame, area: Rect, reply_state: &reply::ReplyState, c
     }
     
     // Show input field
-    if reply_state.tags_input.is_empty() && reply_state.current_field == reply::ReplyField::Tags {
+    if reply_state.tags_input.is_empty() && reply_state.current_field == ReplyField::Tags {
         let mut input_spans = vec![Span::styled("Type tags here...", Style::default().fg(Color::DarkGray))];
         if cursor_visible {
             input_spans.push(Span::styled("█", Style::default().fg(Color::White).bg(Color::Gray)));
@@ -111,7 +114,7 @@ fn draw_tags_field(f: &mut Frame, area: Rect, reply_state: &reply::ReplyState, c
     } else {
         let mut input_spans = Vec::new();
         
-        if reply_state.current_field == reply::ReplyField::Tags && cursor_visible {
+        if reply_state.current_field == ReplyField::Tags && cursor_visible {
             let input_line = text_input::render_single_line_with_cursor(&reply_state.tags_input, reply_state.tags_input_cursor);
             input_spans.extend(input_line.spans);
         } else {
@@ -131,19 +134,19 @@ fn draw_tags_field(f: &mut Frame, area: Rect, reply_state: &reply::ReplyState, c
     f.render_widget(tags, area);
 }
 
-fn draw_mood_field(f: &mut Frame, area: Rect, reply_state: &reply::ReplyState, cursor_visible: bool) {
-    let mood_title = if reply_state.current_field == reply::ReplyField::Mood {
+fn draw_mood_field(f: &mut Frame, area: Rect, reply_state: &ReplyEditor, cursor_visible: bool) {
+    let mood_title = if reply_state.current_field == ReplyField::Mood {
         "Mood (ACTIVE)"
     } else {
         "Mood"
     };
-    let mood_style = if reply_state.current_field == reply::ReplyField::Mood {
+    let mood_style = if reply_state.current_field == ReplyField::Mood {
         Style::default().bg(Color::Black).fg(Color::Yellow)
     } else {
         Style::default().bg(Color::Black)
     };
-    
-    let mood_content = if reply_state.mood.is_empty() && reply_state.current_field == reply::ReplyField::Mood {
+
+    let mood_content = if reply_state.post_state.mood.is_empty() && reply_state.current_field == ReplyField::Mood {
         if cursor_visible {
             Line::from(vec![
                 Span::styled("Enter mood (optional)...", Style::default().fg(Color::DarkGray)),
@@ -154,10 +157,10 @@ fn draw_mood_field(f: &mut Frame, area: Rect, reply_state: &reply::ReplyState, c
         }
     } else {
         // Render mood with cursor if active
-        if reply_state.current_field == reply::ReplyField::Mood && cursor_visible {
-            text_input::render_single_line_with_cursor(&reply_state.mood, reply_state.mood_cursor)
+        if reply_state.current_field == ReplyField::Mood && cursor_visible {
+            text_input::render_single_line_with_cursor(&reply_state.post_state.mood, reply_state.mood_cursor)
         } else {
-            Line::from(reply_state.mood.as_str())
+            Line::from(reply_state.post_state.mood.as_str())
         }
     };
     

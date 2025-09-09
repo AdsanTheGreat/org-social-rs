@@ -1,8 +1,8 @@
 //! Event handling and input processing.
 
 use super::modes::AppMode;
+use crate::editor::{NewPostEditor, NewPostField, ReplyEditor, ReplyField};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use org_social_lib_rs::{new_post, reply};
 
 /// Handle keyboard events and return appropriate actions
 pub enum EventResult {
@@ -145,13 +145,13 @@ fn handle_help_input(key: KeyEvent) -> EventResult {
 }
 
 /// Handle Enter key behavior in reply mode based on current field
-pub fn handle_reply_enter(reply_state: &Option<reply::ReplyState>) -> EventResult {
+pub fn handle_reply_enter(reply_state: &Option<ReplyEditor>) -> EventResult {
     match reply_state.as_ref().map(|rs| &rs.current_field) {
-        Some(reply::ReplyField::Tags) => EventResult::FinalizeTags,
-        Some(reply::ReplyField::Content) => {
+        Some(ReplyField::Tags) => EventResult::FinalizeTags,
+        Some(ReplyField::Content) => {
             EventResult::ReplyNewline
         }
-        Some(reply::ReplyField::PollOption) => {
+        Some(ReplyField::PollOption) => {
             EventResult::SubmitReply
         }
         _ => {
@@ -162,10 +162,10 @@ pub fn handle_reply_enter(reply_state: &Option<reply::ReplyState>) -> EventResul
 }
 
 /// Handle Enter key behavior in new post mode based on current field
-pub fn handle_new_post_enter(new_post_state: &Option<new_post::NewPostState>) -> EventResult {
+pub fn handle_new_post_enter(new_post_state: &Option<NewPostEditor>) -> EventResult {
     match new_post_state.as_ref().map(|nps| &nps.current_field) {
-        Some(new_post::NewPostField::Tags) => EventResult::FinalizeTags,
-        Some(new_post::NewPostField::Content) => {
+        Some(NewPostField::Tags) => EventResult::FinalizeTags,
+        Some(NewPostField::Content) => {
             // In content field, plain Enter adds newline for convenience
             EventResult::NewPostNewline
         }

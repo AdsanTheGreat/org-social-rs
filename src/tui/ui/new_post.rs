@@ -1,7 +1,7 @@
 //! New post window UI component.
 
 use super::text_input::{self, ContentFieldConfig, SingleLineFieldConfig};
-use org_social_lib_rs::new_post;
+use crate::editor::{NewPostEditor, NewPostField};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
@@ -10,11 +10,11 @@ use ratatui::{
     Frame,
 };
 
-fn draw_content_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPostState, cursor_visible: bool) {
+fn draw_content_field(f: &mut Frame, area: Rect, new_post_state: &NewPostEditor, cursor_visible: bool) {
     let config = ContentFieldConfig {
-        text: &new_post_state.content,
+        text: &new_post_state.post_state.content,
         cursor_pos: new_post_state.content_cursor,
-        is_active: new_post_state.current_field == new_post::NewPostField::Content,
+        is_active: new_post_state.current_field == NewPostField::Content,
         cursor_visible,
         placeholder: "Type your post content here...",
         title_active: "Content (ACTIVE)",
@@ -25,7 +25,7 @@ fn draw_content_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewP
 }
 
 /// Draw the new post window overlay
-pub fn draw_new_post_window(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPostState, cursor_visible: bool) {
+pub fn draw_new_post_window(f: &mut Frame, area: Rect, new_post_state: &NewPostEditor, cursor_visible: bool) {
     // Create centered new post window
     let new_post_area = Rect {
         x: area.width / 8,
@@ -81,7 +81,7 @@ pub fn draw_new_post_window(f: &mut Frame, area: Rect, new_post_state: &new_post
     draw_poll_option_field(f, new_post_chunks[4], new_post_state, cursor_visible);
 
     // Help/Controls
-    let help_text = "Tab/Shift+Tab:switch fields | Enter/Shift+Enter:newline | Ctrl+S:submit | F1:remove last tag | F2:reset fields | Esc:cancel | n:new post";
+    let help_text = "Tab/Shift+Tab:switch fields | Enter/Shift+Enter:newline | Ctrl+S:submit | F1:remove last tag | F2:reset fields | Esc:cancel";
     let help = Paragraph::new(help_text)
         .block(Block::default().borders(Borders::ALL).title("Controls"))
         .wrap(Wrap { trim: true })
@@ -89,13 +89,13 @@ pub fn draw_new_post_window(f: &mut Frame, area: Rect, new_post_state: &new_post
     f.render_widget(help, new_post_chunks[5]);
 }
 
-fn draw_tags_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPostState, cursor_visible: bool) {
-    let tags_title = if new_post_state.current_field == new_post::NewPostField::Tags {
+fn draw_tags_field(f: &mut Frame, area: Rect, new_post_state: &NewPostEditor, cursor_visible: bool) {
+    let tags_title = if new_post_state.current_field == NewPostField::Tags {
         "Tags (ACTIVE)"
     } else {
         "Tags"
     };
-    let tags_style = if new_post_state.current_field == new_post::NewPostField::Tags {
+    let tags_style = if new_post_state.current_field == NewPostField::Tags {
         Style::default().bg(Color::Black).fg(Color::Yellow)
     } else {
         Style::default().bg(Color::Black)
@@ -104,15 +104,15 @@ fn draw_tags_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPost
     let mut tags_content_parts = Vec::new();
     
     // Show existing tags
-    if !new_post_state.tags.is_empty() {
-        for tag in &new_post_state.tags {
+    if !new_post_state.post_state.tags.is_empty() {
+        for tag in &new_post_state.post_state.tags {
             tags_content_parts.push(Span::raw(format!("#{tag} ")));
         }
     }
     
     // Show current input with proper cursor handling
-    if !new_post_state.tags_input.is_empty() || new_post_state.current_field == new_post::NewPostField::Tags {
-        if new_post_state.current_field == new_post::NewPostField::Tags && cursor_visible {
+    if !new_post_state.tags_input.is_empty() || new_post_state.current_field == NewPostField::Tags {
+        if new_post_state.current_field == NewPostField::Tags && cursor_visible {
             let input_line = text_input::render_single_line_with_cursor(&new_post_state.tags_input, new_post_state.tags_input_cursor);
             tags_content_parts.extend(input_line.spans);
         } else {
@@ -134,11 +134,11 @@ fn draw_tags_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPost
     f.render_widget(tags, area);
 }
 
-fn draw_mood_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPostState, cursor_visible: bool) {
+fn draw_mood_field(f: &mut Frame, area: Rect, new_post_state: &NewPostEditor, cursor_visible: bool) {
     let config = SingleLineFieldConfig {
-        text: &new_post_state.mood,
+        text: &new_post_state.post_state.mood,
         cursor_pos: new_post_state.mood_cursor,
-        is_active: new_post_state.current_field == new_post::NewPostField::Mood,
+        is_active: new_post_state.current_field == NewPostField::Mood,
         cursor_visible,
         placeholder: "Your mood",
         title_active: "Mood (ACTIVE)",
@@ -148,11 +148,11 @@ fn draw_mood_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPost
     text_input::draw_single_line_field(f, area, config);
 }
 
-fn draw_lang_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPostState, cursor_visible: bool) {
+fn draw_lang_field(f: &mut Frame, area: Rect, new_post_state: &NewPostEditor, cursor_visible: bool) {
     let config = SingleLineFieldConfig {
-        text: &new_post_state.lang,
+        text: &new_post_state.post_state.lang,
         cursor_pos: new_post_state.lang_cursor,
-        is_active: new_post_state.current_field == new_post::NewPostField::Lang,
+        is_active: new_post_state.current_field == NewPostField::Lang,
         cursor_visible,
         placeholder: "e.g., en, es",
         title_active: "Language (ACTIVE)",
@@ -162,11 +162,11 @@ fn draw_lang_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPost
     text_input::draw_single_line_field(f, area, config);
 }
 
-fn draw_poll_end_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPostState, cursor_visible: bool) {
+fn draw_poll_end_field(f: &mut Frame, area: Rect, new_post_state: &NewPostEditor, cursor_visible: bool) {
     let config = SingleLineFieldConfig {
-        text: &new_post_state.poll_end,
+        text: new_post_state.post_state.poll_end.as_deref().unwrap_or(""),
         cursor_pos: new_post_state.poll_end_cursor,
-        is_active: new_post_state.current_field == new_post::NewPostField::PollEnd,
+        is_active: new_post_state.current_field == NewPostField::PollEnd,
         cursor_visible,
         placeholder: "ISO date",
         title_active: "Poll End (ACTIVE)",
@@ -176,11 +176,11 @@ fn draw_poll_end_field(f: &mut Frame, area: Rect, new_post_state: &new_post::New
     text_input::draw_single_line_field(f, area, config);
 }
 
-fn draw_poll_option_field(f: &mut Frame, area: Rect, new_post_state: &new_post::NewPostState, cursor_visible: bool) {
+fn draw_poll_option_field(f: &mut Frame, area: Rect, new_post_state: &NewPostEditor, cursor_visible: bool) {
     let config = SingleLineFieldConfig {
-        text: &new_post_state.poll_option,
+        text: new_post_state.post_state.poll_option.as_deref().unwrap_or(""),
         cursor_pos: new_post_state.poll_option_cursor,
-        is_active: new_post_state.current_field == new_post::NewPostField::PollOption,
+        is_active: new_post_state.current_field == NewPostField::PollOption,
         cursor_visible,
         placeholder: "Poll option text",
         title_active: "Poll Option (ACTIVE)",
