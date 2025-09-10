@@ -103,15 +103,7 @@ impl ActivatableManager {
         self.clear();
 
         // Get a short title from the post content (first 30 characters)
-        let post_title = {
-            let content = post.content();
-            if content.chars().count() > 30 {
-                let truncated: String = content.chars().take(30).collect();
-                format!("{}...", truncated)
-            } else {
-                content.to_string()
-            }
-        };
+        let post_title = post.summary(30);
 
         // Process blocks from the post
         for element in post.blocks() {
@@ -139,7 +131,7 @@ impl ActivatableManager {
                         start_line,
                         element.end_line(),
                         0,
-                        post_title.clone(), // Use post title instead of poll summary
+                        post_title.clone(), 
                         vote_counts,
                         total_votes,
                         status,

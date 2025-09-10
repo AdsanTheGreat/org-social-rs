@@ -1,8 +1,10 @@
 //! Post list UI component (both list and threaded views).
 
+use crate::tui::ui::content::render_fancy_summary;
+
 use super::super::modes::ViewMode;
 use super::super::navigation::Navigator;
-use org_social_lib_rs::{notifications, parser, threading};
+use org_social_lib_rs::{notifications, parser, post::PostType, threading};
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -52,13 +54,15 @@ fn draw_list_view(f: &mut Frame, area: Rect, posts: &[parser::Post], navigator: 
                 "no time".to_string()
             };
 
-            let content_preview = post.content()
-                .lines()
-                .next()
-                .unwrap_or("")
-                .chars()
-                .take(25)
-                .collect::<String>();
+            let content_preview = match post.post_type() {
+                PostType::Reaction => {
+                    post.mood().clone().unwrap_or("".to_owned()).to_string()
+                }
+                PostType::SimplePollVote => {
+                    format!("Vote: {}", post.poll_option().clone().unwrap_or("".to_owned()))
+                }
+                _ => render_fancy_summary(post, 25)
+            };
 
             let line = Line::from(vec![
                 Span::styled(format!("{author}: "), style.fg(Color::Green)),
@@ -127,13 +131,15 @@ fn draw_threaded_view(f: &mut Frame, area: Rect, thread_view: &threading::Thread
                 "no time".to_string()
             };
 
-            let content_preview = post.content()
-                .lines()
-                .next()
-                .unwrap_or("")
-                .chars()
-                .take(25 - indent.len()) // Account for indentation
-                .collect::<String>();
+            let content_preview = match post.post_type() {
+                PostType::Reaction => {
+                    post.mood().clone().unwrap_or("".to_owned()).to_string()
+                }
+                PostType::SimplePollVote => {
+                    format!("Vote: {}", post.poll_option().clone().unwrap_or("".to_owned()))
+                }
+                _ => render_fancy_summary(post, 25)
+            };
 
             let line = Line::from(vec![
                 Span::styled(indent.to_string(), style),

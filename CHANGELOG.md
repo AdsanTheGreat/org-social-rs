@@ -11,10 +11,16 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
   - Clears all field content and resets cursor positions
 
 ### Changed
+- **Post List's summary**: Updated the rendering of the content's summary
+  - It has partial formatting, doesn't split words
+  - Reactions and votes are specially handled
+- **Post display**: Posts with no content now don't display the content area at all
+  - Also, mood is finnaly displayed
 - **Form State Management**: Reply and new post states are now persistent in memory
   - Replies reset when you start a reply to a different post
 
 ### Technical Details
+- **Library Update**: Updated org-social-lib-rs to version 0.4.*
 - **New Module**: `src/tui/ui/text_input.rs`
   - Contains shared text input rendering utilities
   - Provides consistent styling and cursor handling across forms

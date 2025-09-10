@@ -1,5 +1,7 @@
 //! Post content display UI component.
 
+use std::sync::{Arc, Mutex};
+
 use crate::tui::activatable::{self, ActivatableCollector, ActivatableManager};
 use org_social_lib_rs::{parser, post::PostType};
 use org_social_lib_rs::tokenizer::Token;
@@ -85,7 +87,7 @@ fn process_post_tokens(
 }
 
 /// Convert a single token to one or more styled spans
-fn token_to_spans(
+pub fn token_to_spans(
     token: Token,
     collector: &ActivatableCollector,
     activatable_manager: Option<&ActivatableManager>,
@@ -190,6 +192,74 @@ fn token_to_spans(
     }
 }
 
+/// Render a fancy summary of the post content, limited to max_len characters.
+/// This function attempts to preserve whole words and adds "..." if truncated.
+/// It also stops at the first newline if encountered.
+pub fn render_fancy_summary(post: &parser::Post, max_len: usize) -> String {
+    // Create a dummy collector for token processing (we won't use the collected activatable elements)
+    let dummy_collector: ActivatableCollector = Arc::new(Mutex::new(Vec::new()));
+    
+    let mut display_length = 0;
+    let mut result = String::new();
+    let mut current_col = 0;
+    
+    // Process each token from the post
+    for token in post.tokens() {
+        let token_spans = token_to_spans(
+            token.clone(),
+            &dummy_collector,
+            None, // throwaway
+            0,    // throwaway
+            &mut current_col,
+        );
+
+        for span in token_spans {
+            let span_content = &span.content;
+            
+            // Count characters properly for display length
+            let span_char_count = span_content.chars().count();
+            
+            if display_length + span_char_count > max_len {
+                // Add only the characters that fit
+                let remaining_chars = max_len - display_length;
+                if remaining_chars > 0 {
+                    let partial_content: String = span_content.chars().take(remaining_chars).collect();
+                    result.push_str(&partial_content);
+                }
+                result.push_str("...");
+                return result;
+            }
+            
+            if span_content.contains('\n') {
+                // Add content up to the first newline
+                if let Some(newline_char_pos) = span_content.chars().position(|c| c == '\n') {
+                    let content_before_newline: String = span_content.chars().take(newline_char_pos).collect();
+                    result.push_str(&content_before_newline);
+                    if display_length + newline_char_pos < max_len {
+                        result.push_str("...");
+                    }
+                    return result;
+                } else {
+                    // This shouldn't happen
+                    result.push_str(span_content);
+                    display_length += span_char_count;
+                }
+            } else {
+                // No newlines, add the full span
+                result.push_str(span_content);
+                display_length += span_char_count;
+            }
+            
+            // If we've reached the limit, stop
+            if display_length >= max_len {
+                return result;
+            }
+        }
+    }
+    
+    result
+}
+
 /// Apply block styling to lines based on post blocks
 fn apply_block_styling(
     lines: Vec<Vec<Span<'static>>>,
@@ -208,7 +278,6 @@ fn apply_block_styling(
                 let is_collapsed = block.is_collapsed();
 
                 if is_collapsed {
-                    // Replace the block lines with a single collapsed line
                     let summary = block.get_summary();
                     
                     // Add collapsed block to collector
