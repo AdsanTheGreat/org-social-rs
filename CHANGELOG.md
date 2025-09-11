@@ -18,17 +18,18 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
   - Also, mood is finnaly displayed
 - **Form State Management**: Reply and new post states are now persistent in memory
   - Replies reset when you start a reply to a different post
+  - They can also be manually cleared with F2 in the editor
+- **Editor enhancements**: Editor now supports:
+  - Arrow keys for navigation within fields
 
 ### Technical Details
 - **Library Update**: Updated org-social-lib-rs to version 0.4.*
 - **New Module**: `src/tui/ui/text_input.rs`
   - Contains shared text input rendering utilities
   - Provides consistent styling and cursor handling across forms
-- **New TUI Fields**:
-  - Added `persistent_new_post_state: Option<new_post::NewPostState>`
-  - Added `persistent_reply_state: Option<reply::ReplyState>`
-  - Added `persistent_reply_post_id: Option<String>` to track which post the reply state belongs to
-- **New Event**: Added `EventResult::ResetFields` for F2 key functionality
+- **New Module**: `src/editor.rs`
+  - Reimplements text input handling logic for new post and reply modes
+  - Mostly does what library provided, but with space for extra enhancements
 
 ## [0.3.0] 03-09-2025
 

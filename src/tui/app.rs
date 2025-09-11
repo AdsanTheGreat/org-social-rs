@@ -214,6 +214,27 @@ impl TUI {
             EventResult::ReplyBackspace => {
                 self.handle_reply_backspace();
             }
+            EventResult::ReplyDelete => {
+                self.handle_reply_delete();
+            }
+            EventResult::ReplyCursorLeft => {
+                self.handle_reply_cursor_left();
+            }
+            EventResult::ReplyCursorRight => {
+                self.handle_reply_cursor_right();
+            }
+            EventResult::ReplyCursorStart => {
+                self.handle_reply_cursor_start();
+            }
+            EventResult::ReplyCursorEnd => {
+                self.handle_reply_cursor_end();
+            }
+            EventResult::ReplyCursorUp => {
+                self.handle_reply_cursor_up();
+            }
+            EventResult::ReplyCursorDown => {
+                self.handle_reply_cursor_down();
+            }
             EventResult::NextReplyField => {
                 self.next_reply_field();
             }
@@ -258,6 +279,27 @@ impl TUI {
             }
             EventResult::NewPostBackspace => {
                 self.handle_new_post_backspace();
+            }
+            EventResult::NewPostDelete => {
+                self.handle_new_post_delete();
+            }
+            EventResult::NewPostCursorLeft => {
+                self.handle_new_post_cursor_left();
+            }
+            EventResult::NewPostCursorRight => {
+                self.handle_new_post_cursor_right();
+            }
+            EventResult::NewPostCursorStart => {
+                self.handle_new_post_cursor_start();
+            }
+            EventResult::NewPostCursorEnd => {
+                self.handle_new_post_cursor_end();
+            }
+            EventResult::NewPostCursorUp => {
+                self.handle_new_post_cursor_up();
+            }
+            EventResult::NewPostCursorDown => {
+                self.handle_new_post_cursor_down();
             }
             EventResult::NextNewPostField => {
                 self.next_new_post_field();
@@ -396,6 +438,48 @@ impl TUI {
         }
     }
 
+    pub fn handle_reply_delete(&mut self) {
+        if let Some(reply_state) = &mut self.reply_state {
+            reply_state.handle_delete();
+        }
+    }
+
+    pub fn handle_reply_cursor_left(&mut self) {
+        if let Some(reply_state) = &mut self.reply_state {
+            reply_state.move_cursor_left();
+        }
+    }
+
+    pub fn handle_reply_cursor_right(&mut self) {
+        if let Some(reply_state) = &mut self.reply_state {
+            reply_state.move_cursor_right();
+        }
+    }
+
+    pub fn handle_reply_cursor_start(&mut self) {
+        if let Some(reply_state) = &mut self.reply_state {
+            reply_state.move_cursor_to_start();
+        }
+    }
+
+    pub fn handle_reply_cursor_end(&mut self) {
+        if let Some(reply_state) = &mut self.reply_state {
+            reply_state.move_cursor_to_end();
+        }
+    }
+
+    pub fn handle_reply_cursor_up(&mut self) {
+        if let Some(reply_state) = &mut self.reply_state {
+            reply_state.move_cursor_up();
+        }
+    }
+
+    pub fn handle_reply_cursor_down(&mut self) {
+        if let Some(reply_state) = &mut self.reply_state {
+            reply_state.move_cursor_down();
+        }
+    }
+
     pub fn next_reply_field(&mut self) {
         if let Some(reply_state) = &mut self.reply_state {
             reply_state.next_field();
@@ -509,6 +593,48 @@ impl TUI {
     pub fn handle_new_post_backspace(&mut self) {
         if let Some(new_post_state) = &mut self.new_post_state {
             new_post_state.handle_backspace();
+        }
+    }
+
+    pub fn handle_new_post_delete(&mut self) {
+        if let Some(new_post_state) = &mut self.new_post_state {
+            new_post_state.handle_delete();
+        }
+    }
+
+    pub fn handle_new_post_cursor_left(&mut self) {
+        if let Some(new_post_state) = &mut self.new_post_state {
+            new_post_state.move_cursor_left();
+        }
+    }
+
+    pub fn handle_new_post_cursor_right(&mut self) {
+        if let Some(new_post_state) = &mut self.new_post_state {
+            new_post_state.move_cursor_right();
+        }
+    }
+
+    pub fn handle_new_post_cursor_start(&mut self) {
+        if let Some(new_post_state) = &mut self.new_post_state {
+            new_post_state.move_cursor_to_start();
+        }
+    }
+
+    pub fn handle_new_post_cursor_end(&mut self) {
+        if let Some(new_post_state) = &mut self.new_post_state {
+            new_post_state.move_cursor_to_end();
+        }
+    }
+
+    pub fn handle_new_post_cursor_up(&mut self) {
+        if let Some(new_post_state) = &mut self.new_post_state {
+            new_post_state.move_cursor_up();
+        }
+    }
+
+    pub fn handle_new_post_cursor_down(&mut self) {
+        if let Some(new_post_state) = &mut self.new_post_state {
+            new_post_state.move_cursor_down();
         }
     }
 

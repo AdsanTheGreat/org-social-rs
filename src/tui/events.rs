@@ -22,6 +22,13 @@ pub enum EventResult {
     ReplyInput(char),
     ReplyNewline,
     ReplyBackspace,
+    ReplyDelete,
+    ReplyCursorLeft,
+    ReplyCursorRight,
+    ReplyCursorUp,
+    ReplyCursorDown,
+    ReplyCursorStart,
+    ReplyCursorEnd,
     NextReplyField,
     PrevReplyField,
     FinalizeTags,
@@ -30,6 +37,13 @@ pub enum EventResult {
     NewPostInput(char),
     NewPostNewline,
     NewPostBackspace,
+    NewPostDelete,
+    NewPostCursorLeft,
+    NewPostCursorRight,
+    NewPostCursorUp,
+    NewPostCursorDown,
+    NewPostCursorStart,
+    NewPostCursorEnd,
     NextNewPostField,
     PrevNewPostField,
     SubmitNewPost,
@@ -82,11 +96,22 @@ fn handle_reply_input(key: KeyEvent) -> EventResult {
             // Handle Ctrl+S for submission
             if c == 's' && key.modifiers.contains(KeyModifiers::CONTROL) {
                 EventResult::SubmitReply
+            } else if c == 'a' && key.modifiers.contains(KeyModifiers::CONTROL) {
+                EventResult::ReplyCursorStart
+            } else if c == 'e' && key.modifiers.contains(KeyModifiers::CONTROL) {
+                EventResult::ReplyCursorEnd
             } else {
                 EventResult::ReplyInput(c)
             }
         }
         KeyCode::Backspace => EventResult::ReplyBackspace,
+        KeyCode::Delete => EventResult::ReplyDelete,
+        KeyCode::Left => EventResult::ReplyCursorLeft,
+        KeyCode::Right => EventResult::ReplyCursorRight,
+        KeyCode::Up => EventResult::ReplyCursorUp,
+        KeyCode::Down => EventResult::ReplyCursorDown,
+        KeyCode::Home => EventResult::ReplyCursorStart,
+        KeyCode::End => EventResult::ReplyCursorEnd,
         KeyCode::Enter => {
             // Handle different Enter key combinations
             if key.modifiers.contains(KeyModifiers::SHIFT) {
@@ -112,11 +137,22 @@ fn handle_new_post_input(key: KeyEvent) -> EventResult {
             // Handle Ctrl+S for submission
             if c == 's' && key.modifiers.contains(KeyModifiers::CONTROL) {
                 EventResult::SubmitNewPost
+            } else if c == 'a' && key.modifiers.contains(KeyModifiers::CONTROL) {
+                EventResult::NewPostCursorStart
+            } else if c == 'e' && key.modifiers.contains(KeyModifiers::CONTROL) {
+                EventResult::NewPostCursorEnd
             } else {
                 EventResult::NewPostInput(c)
             }
         }
         KeyCode::Backspace => EventResult::NewPostBackspace,
+        KeyCode::Delete => EventResult::NewPostDelete,
+        KeyCode::Left => EventResult::NewPostCursorLeft,
+        KeyCode::Right => EventResult::NewPostCursorRight,
+        KeyCode::Up => EventResult::NewPostCursorUp,
+        KeyCode::Down => EventResult::NewPostCursorDown,
+        KeyCode::Home => EventResult::NewPostCursorStart,
+        KeyCode::End => EventResult::NewPostCursorEnd,
         KeyCode::Enter => {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
                 EventResult::NewPostNewline
