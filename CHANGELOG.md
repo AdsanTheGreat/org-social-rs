@@ -22,6 +22,10 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
 - **Editor enhancements**: Editor now supports:
   - Arrow keys for navigation within fields
 
+### Fixed
+- **Multi byte characters panic**: Fixed an issue where multi-byte characters could cause panics during text input
+  - Text input handling now (again) uses multi-byte aware character position calculations
+
 ### Technical Details
 - **Library Update**: Updated org-social-lib-rs to version 0.4.*
 - **New Module**: `src/tui/ui/text_input.rs`

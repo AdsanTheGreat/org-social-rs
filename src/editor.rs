@@ -4,6 +4,31 @@
 
 use org_social_lib_rs::{new_post, post::Post};
 
+// Helper functions for character position handling in strings
+
+fn char_pos_to_byte_pos(s: &str, char_pos: usize) -> usize {
+    s.char_indices().nth(char_pos).map(|(i, _)| i).unwrap_or(s.len())
+}
+
+fn char_count(s: &str) -> usize {
+    s.chars().count()
+}
+
+fn insert_char_at_pos(s: &mut String, char_pos: usize, c: char) {
+    let byte_pos = char_pos_to_byte_pos(s, char_pos);
+    s.insert(byte_pos, c);
+}
+
+fn remove_char_at_pos(s: &mut String, char_pos: usize) {
+    if char_pos > 0 {
+        let byte_pos = char_pos_to_byte_pos(s, char_pos - 1);
+        if let Some((_, c)) = s[byte_pos..].char_indices().next() {
+            let char_len = c.len_utf8();
+            s.drain(byte_pos..byte_pos + char_len);
+        }
+    }
+}
+
 /// Enum for tracking which field is currently being edited in new post creation
 #[derive(Debug, Clone, PartialEq)]
 pub enum NewPostField {
@@ -56,33 +81,33 @@ impl NewPostEditor {
     pub fn handle_input(&mut self, c: char) {
         match self.current_field {
             NewPostField::Content => {
-                self.post_state.content.insert(self.content_cursor, c);
+                insert_char_at_pos(&mut self.post_state.content, self.content_cursor, c);
                 self.content_cursor += 1;
             }
             NewPostField::Tags => {
-                self.tags_input.insert(self.tags_input_cursor, c);
+                insert_char_at_pos(&mut self.tags_input, self.tags_input_cursor, c);
                 self.tags_input_cursor += 1;
             }
             NewPostField::Mood => {
-                self.post_state.mood.insert(self.mood_cursor, c);
+                insert_char_at_pos(&mut self.post_state.mood, self.mood_cursor, c);
                 self.mood_cursor += 1;
             }
             NewPostField::Lang => {
-                self.post_state.lang.insert(self.lang_cursor, c);
+                insert_char_at_pos(&mut self.post_state.lang, self.lang_cursor, c);
                 self.lang_cursor += 1;
             }
             NewPostField::PollEnd => {
                 if self.post_state.poll_end.is_none() {
                     self.post_state.poll_end = Some(String::new());
                 }
-                self.post_state.poll_end.as_mut().unwrap().insert(self.poll_end_cursor, c);
+                insert_char_at_pos(self.post_state.poll_end.as_mut().unwrap(), self.poll_end_cursor, c);
                 self.poll_end_cursor += 1;
             }
             NewPostField::PollOption => {
                 if self.post_state.poll_option.is_none() {
                     self.post_state.poll_option = Some(String::new());
                 }
-                self.post_state.poll_option.as_mut().unwrap().insert(self.poll_option_cursor, c);
+                insert_char_at_pos(self.post_state.poll_option.as_mut().unwrap(), self.poll_option_cursor, c);
                 self.poll_option_cursor += 1;
             }
         }
@@ -91,7 +116,7 @@ impl NewPostEditor {
     pub fn handle_newline(&mut self) {
         match self.current_field {
             NewPostField::Content => {
-                self.post_state.content.insert(self.content_cursor, '\n');
+                insert_char_at_pos(&mut self.post_state.content, self.content_cursor, '\n');
                 self.content_cursor += 1;
             }
             _ => {
@@ -103,48 +128,48 @@ impl NewPostEditor {
     pub fn handle_backspace(&mut self) {
         match self.current_field {
             NewPostField::Content => {
+                remove_char_at_pos(&mut self.post_state.content, self.content_cursor);
                 if self.content_cursor > 0 {
                     self.content_cursor -= 1;
-                    self.post_state.content.remove(self.content_cursor);
                 }
             }
             NewPostField::Tags => {
+                remove_char_at_pos(&mut self.tags_input, self.tags_input_cursor);
                 if self.tags_input_cursor > 0 {
                     self.tags_input_cursor -= 1;
-                    self.tags_input.remove(self.tags_input_cursor);
                 }
             }
             NewPostField::Mood => {
+                remove_char_at_pos(&mut self.post_state.mood, self.mood_cursor);
                 if self.mood_cursor > 0 {
                     self.mood_cursor -= 1;
-                    self.post_state.mood.remove(self.mood_cursor);
                 }
             }
             NewPostField::Lang => {
+                remove_char_at_pos(&mut self.post_state.lang, self.lang_cursor);
                 if self.lang_cursor > 0 {
                     self.lang_cursor -= 1;
-                    self.post_state.lang.remove(self.lang_cursor);
                 }
             }
             NewPostField::PollEnd => {
-                if self.poll_end_cursor > 0 {
-                    self.poll_end_cursor -= 1;
-                    if let Some(ref mut end) = self.post_state.poll_end {
-                        end.remove(self.poll_end_cursor);
-                        if end.is_empty() {
-                            self.post_state.poll_end = None;
-                        }
+                if let Some(ref mut end) = self.post_state.poll_end {
+                    remove_char_at_pos(end, self.poll_end_cursor);
+                    if self.poll_end_cursor > 0 {
+                        self.poll_end_cursor -= 1;
+                    }
+                    if end.is_empty() {
+                        self.post_state.poll_end = None;
                     }
                 }
             }
             NewPostField::PollOption => {
-                if self.poll_option_cursor > 0 {
-                    self.poll_option_cursor -= 1;
-                    if let Some(ref mut option) = self.post_state.poll_option {
-                        option.remove(self.poll_option_cursor);
-                        if option.is_empty() {
-                            self.post_state.poll_option = None;
-                        }
+                if let Some(ref mut option) = self.post_state.poll_option {
+                    remove_char_at_pos(option, self.poll_option_cursor);
+                    if self.poll_option_cursor > 0 {
+                        self.poll_option_cursor -= 1;
+                    }
+                    if option.is_empty() {
+                        self.post_state.poll_option = None;
                     }
                 }
             }
@@ -234,35 +259,35 @@ impl NewPostEditor {
     pub fn move_cursor_right(&mut self) {
         match self.current_field {
             NewPostField::Content => {
-                if self.content_cursor < self.post_state.content.len() {
+                if self.content_cursor < char_count(&self.post_state.content) {
                     self.content_cursor += 1;
                 }
             }
             NewPostField::Tags => {
-                if self.tags_input_cursor < self.tags_input.len() {
+                if self.tags_input_cursor < char_count(&self.tags_input) {
                     self.tags_input_cursor += 1;
                 }
             }
             NewPostField::Mood => {
-                if self.mood_cursor < self.post_state.mood.len() {
+                if self.mood_cursor < char_count(&self.post_state.mood) {
                     self.mood_cursor += 1;
                 }
             }
             NewPostField::Lang => {
-                if self.lang_cursor < self.post_state.lang.len() {
+                if self.lang_cursor < char_count(&self.post_state.lang) {
                     self.lang_cursor += 1;
                 }
             }
             NewPostField::PollEnd => {
                 if let Some(ref end) = self.post_state.poll_end {
-                    if self.poll_end_cursor < end.len() {
+                    if self.poll_end_cursor < char_count(end) {
                         self.poll_end_cursor += 1;
                     }
                 }
             }
             NewPostField::PollOption => {
                 if let Some(ref option) = self.post_state.poll_option {
-                    if self.poll_option_cursor < option.len() {
+                    if self.poll_option_cursor < char_count(option) {
                         self.poll_option_cursor += 1;
                     }
                 }
@@ -283,15 +308,15 @@ impl NewPostEditor {
 
     pub fn move_cursor_to_end(&mut self) {
         match self.current_field {
-            NewPostField::Content => self.content_cursor = self.post_state.content.len(),
-            NewPostField::Tags => self.tags_input_cursor = self.tags_input.len(),
-            NewPostField::Mood => self.mood_cursor = self.post_state.mood.len(),
-            NewPostField::Lang => self.lang_cursor = self.post_state.lang.len(),
+            NewPostField::Content => self.content_cursor = char_count(&self.post_state.content),
+            NewPostField::Tags => self.tags_input_cursor = char_count(&self.tags_input),
+            NewPostField::Mood => self.mood_cursor = char_count(&self.post_state.mood),
+            NewPostField::Lang => self.lang_cursor = char_count(&self.post_state.lang),
             NewPostField::PollEnd => {
-                self.poll_end_cursor = self.post_state.poll_end.as_ref().map_or(0, |s| s.len());
+                self.poll_end_cursor = self.post_state.poll_end.as_ref().map_or(0, |s| char_count(s));
             }
             NewPostField::PollOption => {
-                self.poll_option_cursor = self.post_state.poll_option.as_ref().map_or(0, |s| s.len());
+                self.poll_option_cursor = self.post_state.poll_option.as_ref().map_or(0, |s| char_count(s));
             }
         }
     }
@@ -337,18 +362,29 @@ impl NewPostEditor {
         }
     }
 
-    /// Helper function to get line and column from cursor position
+    /// Helper function to get line and column from cursor position (character-based)
     fn get_cursor_line_col(content: &str, cursor_pos: usize) -> (usize, usize) {
-        let text_before_cursor = &content[..cursor_pos.min(content.len())];
-        let lines: Vec<&str> = text_before_cursor.split('\n').collect();
-        let line = lines.len().saturating_sub(1);
-        let col = lines.last().map_or(0, |last_line| last_line.len());
+        let chars: Vec<char> = content.chars().collect();
+        let chars_before_cursor = &chars[..cursor_pos.min(chars.len())];
+        
+        let mut line = 0;
+        let mut col = 0;
+        
+        for &ch in chars_before_cursor {
+            if ch == '\n' {
+                line += 1;
+                col = 0;
+            } else {
+                col += 1;
+            }
+        }
+        
         (line, col)
     }
 
-    /// Helper function to get cursor position from line and column
+    /// Helper function to get cursor position from line and column (character-based)
     fn get_cursor_from_line_col(content: &str, target_line: usize, target_col: usize) -> Option<usize> {
-        let lines: Vec<&str> = content.split('\n').collect();
+        let lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
         
         if target_line >= lines.len() {
             return None;
@@ -356,11 +392,11 @@ impl NewPostEditor {
 
         let mut cursor_pos = 0;
         for i in 0..target_line {
-            cursor_pos += lines[i].len() + 1; // +1 for the \n
+            cursor_pos += lines[i].chars().count() + 1; // +1 for the newline character
         }
         
-        let line_len = lines[target_line].len();
-        cursor_pos += target_col.min(line_len);
+        let line_char_len = lines[target_line].chars().count();
+        cursor_pos += target_col.min(line_char_len);
         
         Some(cursor_pos)
     }
@@ -468,15 +504,15 @@ impl ReplyEditor {
     pub fn handle_input(&mut self, c: char) {
         match self.current_field {
             ReplyField::Content => {
-                self.post_state.content.insert(self.content_cursor, c);
+                insert_char_at_pos(&mut self.post_state.content, self.content_cursor, c);
                 self.content_cursor += 1;
             }
             ReplyField::Tags => {
-                self.tags_input.insert(self.tags_input_cursor, c);
+                insert_char_at_pos(&mut self.tags_input, self.tags_input_cursor, c);
                 self.tags_input_cursor += 1;
             }
             ReplyField::Mood => {
-                self.post_state.mood.insert(self.mood_cursor, c);
+                insert_char_at_pos(&mut self.post_state.mood, self.mood_cursor, c);
                 self.mood_cursor += 1;
             }
             ReplyField::PollOption => {}
@@ -486,7 +522,7 @@ impl ReplyEditor {
     pub fn handle_newline(&mut self) {
         match self.current_field {
             ReplyField::Content => {
-                self.post_state.content.insert(self.content_cursor, '\n');
+                insert_char_at_pos(&mut self.post_state.content, self.content_cursor, '\n');
                 self.content_cursor += 1;
             }
             _ => {
@@ -498,21 +534,21 @@ impl ReplyEditor {
     pub fn handle_backspace(&mut self) {
         match self.current_field {
             ReplyField::Content => {
+                remove_char_at_pos(&mut self.post_state.content, self.content_cursor);
                 if self.content_cursor > 0 {
                     self.content_cursor -= 1;
-                    self.post_state.content.remove(self.content_cursor);
                 }
             }
             ReplyField::Tags => {
+                remove_char_at_pos(&mut self.tags_input, self.tags_input_cursor);
                 if self.tags_input_cursor > 0 {
                     self.tags_input_cursor -= 1;
-                    self.tags_input.remove(self.tags_input_cursor);
                 }
             }
             ReplyField::Mood => {
+                remove_char_at_pos(&mut self.post_state.mood, self.mood_cursor);
                 if self.mood_cursor > 0 {
                     self.mood_cursor -= 1;
-                    self.post_state.mood.remove(self.mood_cursor);
                 }
             }
             ReplyField::PollOption => {}
@@ -522,18 +558,28 @@ impl ReplyEditor {
     pub fn handle_delete(&mut self) {
         match self.current_field {
             ReplyField::Content => {
-                if self.content_cursor < self.post_state.content.len() {
-                    self.post_state.content.remove(self.content_cursor);
+                if self.content_cursor < char_count(&self.post_state.content) {
+                    // For delete, we remove the character at the current cursor position
+                    let current_pos = self.content_cursor;
+                    self.content_cursor += 1;
+                    remove_char_at_pos(&mut self.post_state.content, current_pos + 1);
+                    self.content_cursor = current_pos;
                 }
             }
             ReplyField::Tags => {
-                if self.tags_input_cursor < self.tags_input.len() {
-                    self.tags_input.remove(self.tags_input_cursor);
+                if self.tags_input_cursor < char_count(&self.tags_input) {
+                    let current_pos = self.tags_input_cursor;
+                    self.tags_input_cursor += 1;
+                    remove_char_at_pos(&mut self.tags_input, current_pos + 1);
+                    self.tags_input_cursor = current_pos;
                 }
             }
             ReplyField::Mood => {
-                if self.mood_cursor < self.post_state.mood.len() {
-                    self.post_state.mood.remove(self.mood_cursor);
+                if self.mood_cursor < char_count(&self.post_state.mood) {
+                    let current_pos = self.mood_cursor;
+                    self.mood_cursor += 1;
+                    remove_char_at_pos(&mut self.post_state.mood, current_pos + 1);
+                    self.mood_cursor = current_pos;
                 }
             }
             ReplyField::PollOption => {}
@@ -564,17 +610,17 @@ impl ReplyEditor {
     pub fn move_cursor_right(&mut self) {
         match self.current_field {
             ReplyField::Content => {
-                if self.content_cursor < self.post_state.content.len() {
+                if self.content_cursor < char_count(&self.post_state.content) {
                     self.content_cursor += 1;
                 }
             }
             ReplyField::Tags => {
-                if self.tags_input_cursor < self.tags_input.len() {
+                if self.tags_input_cursor < char_count(&self.tags_input) {
                     self.tags_input_cursor += 1;
                 }
             }
             ReplyField::Mood => {
-                if self.mood_cursor < self.post_state.mood.len() {
+                if self.mood_cursor < char_count(&self.post_state.mood) {
                     self.mood_cursor += 1;
                 }
             }
@@ -593,9 +639,9 @@ impl ReplyEditor {
 
     pub fn move_cursor_to_end(&mut self) {
         match self.current_field {
-            ReplyField::Content => self.content_cursor = self.post_state.content.len(),
-            ReplyField::Tags => self.tags_input_cursor = self.tags_input.len(),
-            ReplyField::Mood => self.mood_cursor = self.post_state.mood.len(),
+            ReplyField::Content => self.content_cursor = char_count(&self.post_state.content),
+            ReplyField::Tags => self.tags_input_cursor = char_count(&self.tags_input),
+            ReplyField::Mood => self.mood_cursor = char_count(&self.post_state.mood),
             ReplyField::PollOption => {}
         }
     }
@@ -643,18 +689,29 @@ impl ReplyEditor {
         }
     }
 
-    /// Helper function to get line and column from cursor position
+    /// Helper function to get line and column from cursor position (character-based)
     fn get_cursor_line_col(content: &str, cursor_pos: usize) -> (usize, usize) {
-        let text_before_cursor = &content[..cursor_pos.min(content.len())];
-        let lines: Vec<&str> = text_before_cursor.split('\n').collect();
-        let line = lines.len().saturating_sub(1);
-        let col = lines.last().map_or(0, |last_line| last_line.len());
+        let chars: Vec<char> = content.chars().collect();
+        let chars_before_cursor = &chars[..cursor_pos.min(chars.len())];
+        
+        let mut line = 0;
+        let mut col = 0;
+        
+        for &ch in chars_before_cursor {
+            if ch == '\n' {
+                line += 1;
+                col = 0;
+            } else {
+                col += 1;
+            }
+        }
+        
         (line, col)
     }
 
-    /// Helper function to get cursor position from line and column
+    /// Helper function to get cursor position from line and column (character-based)
     fn get_cursor_from_line_col(content: &str, target_line: usize, target_col: usize) -> Option<usize> {
-        let lines: Vec<&str> = content.split('\n').collect();
+        let lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
         
         if target_line >= lines.len() {
             return None;
@@ -662,11 +719,11 @@ impl ReplyEditor {
 
         let mut cursor_pos = 0;
         for i in 0..target_line {
-            cursor_pos += lines[i].len() + 1; // +1 for the newline character
+            cursor_pos += lines[i].chars().count() + 1; // +1 for the newline character
         }
         
-        let line_len = lines[target_line].len();
-        cursor_pos += target_col.min(line_len);
+        let line_char_len = lines[target_line].chars().count();
+        cursor_pos += target_col.min(line_char_len);
         
         Some(cursor_pos)
     }

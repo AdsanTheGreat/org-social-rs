@@ -7,6 +7,22 @@ use ratatui::{
     Frame, layout::Rect,
 };
 
+// Helper functions for character position handling in strings
+
+fn char_pos_to_byte_pos(s: &str, char_pos: usize) -> usize {
+    s.char_indices().nth(char_pos).map(|(i, _)| i).unwrap_or(s.len())
+}
+
+fn substr_by_chars(s: &str, start: usize, end: usize) -> &str {
+    let start_byte = char_pos_to_byte_pos(s, start);
+    let end_byte = char_pos_to_byte_pos(s, end);
+    &s[start_byte..end_byte]
+}
+
+fn char_at_pos(s: &str, char_pos: usize) -> Option<char> {
+    s.chars().nth(char_pos)
+}
+
 /// Render multiline text with cursor for text input fields
 pub fn render_text_with_cursor(text: &str, cursor_pos: usize) -> Vec<Line> {
     let mut char_count = 0;
@@ -16,7 +32,8 @@ pub fn render_text_with_cursor(text: &str, cursor_pos: usize) -> Vec<Line> {
     
     for line in lines.iter() {
         let line_start = char_count;
-        let line_end = char_count + line.len();
+        let line_char_len = line.chars().count();
+        let line_end = char_count + line_char_len;
         
         if cursor_pos >= line_start && cursor_pos <= line_end && !cursor_placed {
             // Cursor is in this line
@@ -24,14 +41,16 @@ pub fn render_text_with_cursor(text: &str, cursor_pos: usize) -> Vec<Line> {
             let mut line_spans = Vec::new();
             
             if col_in_line > 0 {
-                line_spans.push(Span::raw(&line[..col_in_line]));
+                line_spans.push(Span::raw(substr_by_chars(line, 0, col_in_line)));
             }
             
             // Add cursor
-            if col_in_line < line.len() {
-                line_spans.push(Span::styled(&line[col_in_line..col_in_line + 1], Style::default().fg(Color::Black).bg(Color::White)));
-                if col_in_line + 1 < line.len() {
-                    line_spans.push(Span::raw(&line[col_in_line + 1..]));
+            if col_in_line < line_char_len {
+                if let Some(char_at_cursor) = char_at_pos(line, col_in_line) {
+                    line_spans.push(Span::styled(char_at_cursor.to_string(), Style::default().fg(Color::Black).bg(Color::White)));
+                }
+                if col_in_line + 1 < line_char_len {
+                    line_spans.push(Span::raw(substr_by_chars(line, col_in_line + 1, line_char_len)));
                 }
             } else {
                 // Cursor at end of line
@@ -62,16 +81,19 @@ pub fn render_single_line_with_cursor(text: &str, cursor_pos: usize) -> Line {
     }
     
     let mut line_spans = Vec::new();
+    let text_char_len = text.chars().count();
     
-    if cursor_pos > 0 && cursor_pos <= text.len() {
-        line_spans.push(Span::raw(&text[..cursor_pos]));
+    if cursor_pos > 0 && cursor_pos <= text_char_len {
+        line_spans.push(Span::raw(substr_by_chars(text, 0, cursor_pos)));
     }
     
-    if cursor_pos < text.len() {
+    if cursor_pos < text_char_len {
         // Highlight the character at cursor position
-        line_spans.push(Span::styled(&text[cursor_pos..cursor_pos + 1], Style::default().fg(Color::Black).bg(Color::White)));
-        if cursor_pos + 1 < text.len() {
-            line_spans.push(Span::raw(&text[cursor_pos + 1..]));
+        if let Some(char_at_cursor) = char_at_pos(text, cursor_pos) {
+            line_spans.push(Span::styled(char_at_cursor.to_string(), Style::default().fg(Color::Black).bg(Color::White)));
+        }
+        if cursor_pos + 1 < text_char_len {
+            line_spans.push(Span::raw(substr_by_chars(text, cursor_pos + 1, text_char_len)));
         }
     } else {
         // Cursor at end of text
