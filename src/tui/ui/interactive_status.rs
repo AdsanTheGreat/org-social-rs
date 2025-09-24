@@ -17,6 +17,8 @@ pub fn draw_status_area(
     mode: &AppMode,
     view_mode: &ViewMode,
     status_bar_state: &StatusBarState,
+    current_filter: Option<&crate::tui::app::FilterType>,
+    filter_mode_active: bool,
 ) {
     match mode {
         AppMode::StatusBarWidget => {
@@ -25,7 +27,7 @@ pub fn draw_status_area(
         }
         _ => {
             if matches!(status_bar_state.current_widget, StatusBarWidget::Default) {
-                render_default_status(f, area, mode, view_mode);
+                render_default_status(f, area, mode, view_mode, current_filter, filter_mode_active);
             } else {
                 f.render_widget(&status_bar_state.current_widget, area);
             }
@@ -39,10 +41,16 @@ fn render_default_status(
     area: Rect,
     mode: &AppMode,
     view_mode: &ViewMode,
+    current_filter: Option<&crate::tui::app::FilterType>,
+    filter_mode_active: bool,
 ) {
     match mode {
         AppMode::Browsing => {
-            let context = StatusBarContext { view_mode: Some(view_mode) };
+            let context = StatusBarContext { 
+                view_mode: Some(view_mode),
+                current_filter,
+                filter_mode_active,
+            };
             let widget = StatusBarWidget::Default;
             widget.render_with_context(area, f.buffer_mut(), &context);
         }
@@ -59,12 +67,16 @@ fn render_default_status(
             f.render_widget(&widget, area);
         }
         AppMode::PollVote => {
-            let widget = StatusBarWidget::message("Poll voting mode - use j/k to select, Enter to vote, Esc to cancel", None);
+            let widget = StatusBarWidget::message("Poll voting mode - use ↑/↓ to select, Enter to vote, Esc to cancel", None);
             f.render_widget(&widget, area);
         }
         AppMode::StatusBarWidget => {
             let widget = StatusBarWidget::Default;
-            let context = StatusBarContext { view_mode: Some(view_mode) };
+            let context = StatusBarContext { 
+                view_mode: Some(view_mode),
+                current_filter,
+                filter_mode_active,
+            };
             widget.render_with_context(area, f.buffer_mut(), &context);
         }
     }

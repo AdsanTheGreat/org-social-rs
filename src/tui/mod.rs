@@ -93,6 +93,8 @@ async fn run_app<B: ratatui::backend::Backend>(
                 &app.activatable_collector,
                 Some(&app.activatable_manager),
                 &app.status_bar_state,
+                app.current_filter.as_ref(),
+                app.filter_mode_active,
             )
         })?;
 

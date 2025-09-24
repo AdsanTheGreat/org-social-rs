@@ -67,6 +67,11 @@ pub enum EventResult {
     StatusBarDown,
     StatusBarSubmit,
     StatusBarCancel,
+    StartFilterSelection,
+    ApplyFilter(crate::tui::app::FilterType),
+    FilterParameterInput(String),
+    ClearAllFilters,
+    ExitFilterMode,
 }
 
 pub fn handle_key_event(key: KeyEvent, mode: &AppMode) -> EventResult {
@@ -96,6 +101,7 @@ fn handle_browsing_input(key: KeyEvent) -> EventResult {
         KeyCode::Char('v') => EventResult::CountPollVotes, // Count votes for poll in current post
         KeyCode::Char('l') => EventResult::NextLink,      // Navigate to next activatable element
         KeyCode::Char('L') => EventResult::PrevLink,      // Navigate to previous activatable element
+        KeyCode::Char('f') => EventResult::StartFilterSelection, // Start filter selection mode
         KeyCode::Enter | KeyCode::Tab => EventResult::ActivateLink, // Activate focused element (link or block)
         KeyCode::Esc => EventResult::Cancel,
         _ => EventResult::Continue,

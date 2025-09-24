@@ -32,6 +32,8 @@ pub fn draw_ui(
     collector: &ActivatableCollector,
     activatable_manager: Option<&ActivatableManager>,
     status_bar_state: &StatusBarState,
+    current_filter: Option<&crate::tui::app::FilterType>,
+    filter_mode_active: bool,
 ) {
     let size = f.area();
 
@@ -55,7 +57,7 @@ pub fn draw_ui(
             }
         }
         _ => {
-            draw_main_ui(f, size, view_mode, simple_feed, notification_feed, thread_view, navigator, current_post, mode, collector, activatable_manager, status_bar_state);
+            draw_main_ui(f, size, view_mode, simple_feed, notification_feed, thread_view, navigator, current_post, mode, collector, activatable_manager, status_bar_state, current_filter, filter_mode_active);
         }
     }
 }
@@ -73,11 +75,25 @@ fn draw_main_ui(
     collector: &ActivatableCollector,
     activatable_manager: Option<&ActivatableManager>,
     status_bar_state: &StatusBarState,
+    current_filter: Option<&crate::tui::app::FilterType>,
+    filter_mode_active: bool,
 ) {
     // Split the screen into three areas
+    // Give more space to status bar when showing interactive widgets
+    let status_bar_height = match mode {
+        AppMode::StatusBarWidget => match &status_bar_state.current_widget {
+            crate::tui::status_bar_widget::StatusBarWidget::OptionSelect { options, .. } => {
+                // Need space for prompt (3 lines) + options (min 2 lines each) + some padding
+                std::cmp::min(10, 3 + options.len() * 2)
+            }
+            _ => 5, // Other interactive widgets need a bit more space
+        },
+        _ => 3, // Default status bar height
+    };
+    
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3)].as_ref())
+        .constraints([Constraint::Min(1), Constraint::Length(status_bar_height as u16)].as_ref())
         .split(area);
 
     let content_chunks = Layout::default()
@@ -94,5 +110,5 @@ fn draw_main_ui(
     content::draw_post_content(f, content_chunks[1], current_post_borrowed, navigator.scroll_offset, collector, activatable_manager);
 
     // Draw status area
-    interactive_status::draw_status_area(f, main_chunks[1], mode, view_mode, status_bar_state);
+    interactive_status::draw_status_area(f, main_chunks[1], mode, view_mode, status_bar_state, current_filter, filter_mode_active);
 }

@@ -2,6 +2,19 @@
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+
+/// Status bar callback identifiers
+#[derive(Clone, Debug, PartialEq)]
+pub enum StatusBarCallback {
+    Search,
+    ConfirmAction,
+    FilterTypeSelection,
+    FilterAuthorSelection,
+    FilterTagInput,
+    FilterLanguageInput,
+    FilterSourceInput,
+}
+
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -27,12 +40,12 @@ pub enum StatusBarWidget {
         options: Vec<String>,
         selected_index: usize,
     },
-    /// Progress/loading widget
+    /// Progress/loading widget - perhaps for async network ops
     Progress {
         message: String,
         progress: Option<f64>,
     },
-    /// Confirmation dialog
+    /// Confirmation dialog - perhaps for destructive actions
     Confirmation {
         message: String,
         yes_text: String,
@@ -56,7 +69,7 @@ pub struct StatusBarState {
     /// Maximum history size
     pub max_history: usize,
     /// Callback identifier for widget completion
-    pub callback_id: Option<String>,
+    pub callback_id: Option<StatusBarCallback>,
     /// Timestamp when the current widget was set (for timeouts)
     pub widget_start_time: Option<Instant>,
 }
@@ -146,6 +159,18 @@ impl StatusBarWidget {
             placeholder: placeholder.into(),
             value: String::new(),
             cursor_pos: 0,
+        }
+    }
+
+    /// Create a text input widget with pre-filled value
+    pub fn text_input_with_value(prompt: impl Into<String>, placeholder: impl Into<String>, value: impl Into<String>) -> Self {
+        let value_str = value.into();
+        let cursor_pos = value_str.len(); // Position cursor at the end of pre-filled text
+        Self::TextInput {
+            prompt: prompt.into(),
+            placeholder: placeholder.into(),
+            value: value_str,
+            cursor_pos,
         }
     }
 
@@ -342,11 +367,17 @@ impl StatusBarWidget {
 /// Context for rendering the default status bar
 pub struct StatusBarContext<'a> {
     pub view_mode: Option<&'a crate::tui::modes::ViewMode>,
+    pub current_filter: Option<&'a crate::tui::app::FilterType>,
+    pub filter_mode_active: bool,
 }
 
 impl<'a> Default for StatusBarContext<'a> {
     fn default() -> Self {
-        Self { view_mode: None }
+        Self { 
+            view_mode: None,
+            current_filter: None,
+            filter_mode_active: false,
+        }
     }
 }
 
@@ -362,12 +393,31 @@ impl StatusBarWidget {
     pub fn render_with_context(&self, area: Rect, buf: &mut ratatui::buffer::Buffer, context: &StatusBarContext) {
         match self {
             StatusBarWidget::Default => {
-                let view_info = if let Some(view_mode) = context.view_mode {
-                    format!("{} | ", view_mode.display_name())
+                let mut status_parts = Vec::new();
+                
+                // Add view mode info
+                if let Some(view_mode) = context.view_mode {
+                    status_parts.push(view_mode.display_name().to_string());
+                }
+                
+                // Add filter info
+                if let Some(filter) = context.current_filter {
+                    status_parts.push(format!("Filtered: {}", filter.display_name()));
+                }
+                
+                let prefix = if !status_parts.is_empty() {
+                    format!("{} | ", status_parts.join(" | "))
                 } else {
                     String::new()
                 };
-                let text = Text::from(format!("{}q:quit | j/k:navigate | d/u:scroll | g/G:top/bottom | t:toggle view | r:reply | n:new post | h:help", view_info));
+                
+                let controls = if context.current_filter.is_some() {
+                    "f:change filter | other keys: navigate/interact"
+                } else {
+                    "t:toggle view | r:reply | n:new post | f:filters | h:help | q:quit"
+                };
+                
+                let text = Text::from(format!("{}{}", prefix, controls));
                 let paragraph = Paragraph::new(text)
                     .block(Block::default().borders(Borders::ALL).title("Status"))
                     .wrap(Wrap { trim: true });

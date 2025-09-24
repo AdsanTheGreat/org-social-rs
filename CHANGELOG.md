@@ -9,8 +9,20 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
 - **Field Reset Functionality**: Added F2 key binding to reset all form fields
   - Works in both reply and new post modes
   - Clears all field content and resets cursor positions
+- **Filter Mode**: Added support for filter mode in the status bar
+  - Allows for filtering posts by tags, author, source, lang and polls
+  - Activated by pressing 'f' in browsing mode
+  - Two-stage selection: first select filter type, then enter filter value
+  - Filters are applied to all view modes
+  - Current filter is displayed in the status bar
+  - Only one filter at a time is supported
 
 ### Changed
+- **Status bar enchancements**: Status bar can now more easily be extended and used
+  - It allows multiple messages to be queued and displayed in sequence
+  - Messages have a timeout after which they disappear automatically
+  - Allows for using status bar as an input field, or an option selector
+  - Status bar widgets can have callbacks to trigger specific app functionality
 - **Post List's summary**: Updated the rendering of the content's summary
   - It has partial formatting, doesn't split words
   - Reactions and votes are specially handled
@@ -27,7 +39,8 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
   - Text input handling now (again) uses multi-byte aware character position calculations
 
 ### Technical Details
-- **Library Update**: Updated org-social-lib-rs to version 0.4.*
+- **Library version bump**: Updated org-social-lib-rs to version 0.5.1
+  - Supports org-social 1.3
 - **New Module**: `src/tui/ui/text_input.rs`
   - Contains shared text input rendering utilities
   - Provides consistent styling and cursor handling across forms

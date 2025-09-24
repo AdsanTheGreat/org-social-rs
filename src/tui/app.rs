@@ -5,11 +5,11 @@ use super::{
     events::{self, EventResult},
     modes::{AppMode, ViewMode},
     navigation::Navigator,
-    status_bar_widget::StatusBarState,
+    status_bar_widget::{StatusBarCallback, StatusBarState},
     ui::poll_vote::PollVoteState,
 };
 use crate::editor::{NewPostEditor, ReplyEditor};
-use org_social_lib_rs::{feed, parser, poll, threading, notifications};
+use org_social_lib_rs::{feed, parser, poll, threading, notifications, blocks::ActivatableElement};
 use std::rc::Rc;
 use std::cell::RefCell;
 
@@ -60,6 +60,12 @@ pub struct TUI {
     pub persistent_reply_post_id: Option<String>,
     /// Status bar widget state
     pub status_bar_state: StatusBarState,
+    /// Current active filter for display purposes
+    pub current_filter: Option<FilterType>,
+    /// Whether user is in filter selection mode
+    pub filter_mode_active: bool,
+    /// User profile for filter suggestions
+    pub user_profile: parser::Profile,
 }
 
 impl TUI {
@@ -115,8 +121,11 @@ impl TUI {
             activatable_collector: ActivatableManager::create_collector(),
             persistent_new_post_state: None,
             persistent_reply_state: None,
-            persistent_reply_post_id: None,
+            persistent_reply_post_id: None,  
             status_bar_state: StatusBarState::new(),
+            current_filter: None,
+            filter_mode_active: false,
+            user_profile: user_profile.clone(),
         })
     }
 
@@ -357,6 +366,22 @@ impl TUI {
             }
             EventResult::StatusBarCancel => {
                 self.handle_status_bar_cancel();
+            }
+            // Filter events
+            EventResult::StartFilterSelection => {
+                self.start_filter_selection();
+            }
+            EventResult::ApplyFilter(filter) => {
+                self.apply_filter(filter);
+            }
+            EventResult::FilterParameterInput(_param) => {
+                // This will be handled in status bar callbacks
+            }
+            EventResult::ClearAllFilters => {
+                self.clear_all_filters();
+            }
+            EventResult::ExitFilterMode => {
+                self.exit_filter_mode();
             }
         }
     }
@@ -1095,15 +1120,20 @@ impl TUI {
         // Get the value before processing
         let value = self.status_bar_state.current_widget.get_value();
         let confirmation = self.status_bar_state.current_widget.get_confirmation();
+        let old_callback_id = self.status_bar_state.callback_id.clone();
         
         // Process the submission based on callback_id
-        if let Some(callback_id) = &self.status_bar_state.callback_id.clone() {
+        if let Some(callback_id) = &old_callback_id.clone() {
             self.process_status_bar_callback(callback_id, value, confirmation);
         }
         
-        // Return to browsing mode and reset status bar
-        self.mode = AppMode::Browsing;
-        self.status_bar_state.reset();
+        // Only return to browsing mode and reset if no new widget was set during callback processing
+        // Check if we're still in StatusBarWidget mode and the callback_id changed (indicating new widget)
+        let callback_changed = self.status_bar_state.callback_id != old_callback_id;
+        if !callback_changed || self.mode != AppMode::StatusBarWidget {
+            self.mode = AppMode::Browsing;
+            self.status_bar_state.reset();
+        }
     }
 
     /// Handle cancel/escape in status bar widget
@@ -1117,21 +1147,15 @@ impl TUI {
     }
 
     /// Process callback from status bar widget submission
-    fn process_status_bar_callback(&mut self, callback_id: &str, value: Option<String>, confirmation: Option<bool>) {
-        match callback_id {
-            "search" => {
+    fn process_status_bar_callback(&mut self, callback: &StatusBarCallback, value: Option<String>, confirmation: Option<bool>) {
+        match callback {
+            StatusBarCallback::Search => {
                 if let Some(search_term) = value {
                     self.set_status_message(format!("Searching for: {}", search_term));
                     // TODO: Implement search functionality
                 }
             }
-            "goto_post" => {
-                if let Some(post_id) = value {
-                    self.set_status_message(format!("Going to post: {}", post_id));
-                    // TODO: Implement goto post functionality
-                }
-            }
-            "confirm_action" => {
+            StatusBarCallback::ConfirmAction => {
                 if let Some(confirmed) = confirmation {
                     if confirmed {
                         self.set_status_message("Action confirmed".to_string());
@@ -1141,39 +1165,81 @@ impl TUI {
                     }
                 }
             }
-            _ => {
-                self.set_status_message(format!("Unknown callback: {}", callback_id));
+            StatusBarCallback::FilterTypeSelection => {
+                if let Some(selected_option) = value {
+                    self.handle_filter_type_selection(&selected_option);
+                }
+            }
+            StatusBarCallback::FilterAuthorSelection => {
+                if let Some(selected_author) = value {
+                    self.apply_filter(FilterType::Author(selected_author));
+                    self.set_status_message("Author filter applied".to_string());
+                }
+            }
+            StatusBarCallback::FilterTagInput => {
+                if let Some(tag) = value {
+                    if !tag.trim().is_empty() {
+                        self.apply_filter(FilterType::Tag(tag));
+                        self.set_status_message("Tag filter applied".to_string());
+                    }
+                }
+            }
+            StatusBarCallback::FilterLanguageInput => {
+                if let Some(language) = value {
+                    if !language.trim().is_empty() {
+                        self.apply_filter(FilterType::Language(language));
+                        self.set_status_message("Language filter applied".to_string());
+                    }
+                }
+            }
+            StatusBarCallback::FilterSourceInput => {
+                if let Some(source) = value {
+                    if !source.trim().is_empty() {
+                        self.apply_filter(FilterType::Source(source));
+                        self.set_status_message("Source filter applied".to_string());
+                    }
+                }
             }
         }
     }
     
     /// Show a text input widget in the status bar
-    pub fn show_status_text_input(&mut self, prompt: &str, placeholder: &str, callback_id: &str) {
+    pub fn show_status_text_input(&mut self, prompt: &str, placeholder: &str, callback_id: StatusBarCallback) {
         self.status_bar_state.set_widget(
             crate::tui::status_bar_widget::StatusBarWidget::text_input(prompt, placeholder),
             true,
         );
-        self.status_bar_state.callback_id = Some(callback_id.to_string());
+        self.status_bar_state.callback_id = Some(callback_id);
+        self.mode = AppMode::StatusBarWidget;
+    }
+
+    /// Show a text input widget with pre-filled value in the status bar
+    pub fn show_status_text_input_with_value(&mut self, prompt: &str, placeholder: &str, value: &str, callback_id: StatusBarCallback) {
+        self.status_bar_state.set_widget(
+            crate::tui::status_bar_widget::StatusBarWidget::text_input_with_value(prompt, placeholder, value),
+            true,
+        );
+        self.status_bar_state.callback_id = Some(callback_id);
         self.mode = AppMode::StatusBarWidget;
     }
 
     /// Show an option select widget in the status bar
-    pub fn show_status_option_select(&mut self, prompt: &str, options: Vec<String>, callback_id: &str) {
+    pub fn show_status_option_select(&mut self, prompt: &str, options: Vec<String>, callback_id: StatusBarCallback) {
         self.status_bar_state.set_widget(
             crate::tui::status_bar_widget::StatusBarWidget::option_select(prompt, options),
             true,
         );
-        self.status_bar_state.callback_id = Some(callback_id.to_string());
+        self.status_bar_state.callback_id = Some(callback_id);
         self.mode = AppMode::StatusBarWidget;
     }
 
     /// Show a confirmation dialog in the status bar
-    pub fn show_status_confirmation(&mut self, message: &str, yes_text: &str, no_text: &str, callback_id: &str) {
+    pub fn show_status_confirmation(&mut self, message: &str, yes_text: &str, no_text: &str, callback_id: StatusBarCallback) {
         self.status_bar_state.set_widget(
             crate::tui::status_bar_widget::StatusBarWidget::confirmation(message, yes_text, no_text),
             true,
         );
-        self.status_bar_state.callback_id = Some(callback_id.to_string());
+        self.status_bar_state.callback_id = Some(callback_id);
         self.mode = AppMode::StatusBarWidget;
     }
 
@@ -1183,6 +1249,204 @@ impl TUI {
             crate::tui::status_bar_widget::StatusBarWidget::progress(message, progress),
             false, // Don't preserve history for progress widgets
         );
+    }
+
+}
+
+/// Filter type options available in the first stage of filter selection
+#[derive(Clone, Debug, PartialEq)]
+pub enum FilterTypeOption {
+    Author,
+    Tag,
+    Language,
+    Source,
+    PostsWithPolls,
+    ClearAllFilters,
+}
+
+impl FilterTypeOption {
+    /// Get display name for the filter type option
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            FilterTypeOption::Author => "Author",
+            FilterTypeOption::Tag => "Tag",
+            FilterTypeOption::Language => "Language",
+            FilterTypeOption::Source => "Source",
+            FilterTypeOption::PostsWithPolls => "Posts with Polls",
+            FilterTypeOption::ClearAllFilters => "Clear All Filters",
+        }
+    }
+
+    /// Get all filter type options as strings for UI display
+    pub fn all_options() -> Vec<String> {
+        vec![
+            Self::Author.display_name().to_string(),
+            Self::Tag.display_name().to_string(),
+            Self::Language.display_name().to_string(),
+            Self::Source.display_name().to_string(),
+            Self::PostsWithPolls.display_name().to_string(),
+            Self::ClearAllFilters.display_name().to_string(),
+        ]
+    }
+
+    /// Parse from display string
+    pub fn from_display_name(name: &str) -> Option<Self> {
+        match name {
+            "Author" => Some(Self::Author),
+            "Tag" => Some(Self::Tag),
+            "Language" => Some(Self::Language),
+            "Source" => Some(Self::Source),
+            "Posts with Polls" => Some(Self::PostsWithPolls),
+            "Clear All Filters" => Some(Self::ClearAllFilters),
+            _ => None,
+        }
+    }
+}
+
+/// Types of filters that can be applied to the feed
+#[derive(Clone, Debug, PartialEq)]
+pub enum FilterType {
+    /// Filter by specific author
+    Author(String),
+    /// Filter by tag name
+    Tag(String),
+    /// Filter by language code
+    Language(String),
+    /// Filter by source URL/name
+    Source(String),
+    /// Custom filter for posts containing polls
+    PostsWithPolls,
+}
+
+impl FilterType {
+    /// Get display name for the filter
+    pub fn display_name(&self) -> String {
+        match self {
+            FilterType::Author(name) => format!("Author - {}", name),
+            FilterType::Tag(tag) => format!("Tag - {}", tag),
+            FilterType::Language(lang) => format!("Language - {}", lang),
+            FilterType::Source(source) => format!("Source - {}", source),
+            FilterType::PostsWithPolls => "Posts with Polls".to_string(),
+        }
+    }
+}
+
+impl TUI {
+    /// Start filter selection mode - show filter type options
+    pub fn start_filter_selection(&mut self) {
+        let filter_options = FilterTypeOption::all_options();
+        self.show_status_option_select("Select filter type:", filter_options, StatusBarCallback::FilterTypeSelection);
+        self.filter_mode_active = true;
+    }
+
+    /// Apply the selected filter to the feed
+    pub fn apply_filter(&mut self, filter: FilterType) {
+        // Store the filter first before using it
+        self.current_filter = Some(filter.clone());
+        
+        match filter {
+            FilterType::Author(name) => {
+                self.feed.filter_by_author(&name);
+            }
+            FilterType::Tag(tag) => {
+                self.feed.filter_by_tag(&tag);
+            }
+            FilterType::Language(lang) => {
+                self.feed.filter_by_lang(&lang);
+            }
+            FilterType::Source(source) => {
+                self.feed.filter_by_source(&source);
+            }
+            FilterType::PostsWithPolls => {
+                self.feed.filter_custom(Box::new(|post| {
+                    post.blocks().iter().any(|block| matches!(block, ActivatableElement::Poll(_)))
+                }));
+            }
+        }
+
+        self.navigator.reset_scroll();
+        self.process_current_post_content();
+    }
+
+    /// Clear all filters and show all posts
+    pub fn clear_all_filters(&mut self) {
+        self.feed.update_all_views();
+        self.current_filter = None;
+        self.navigator.reset_scroll();
+        self.process_current_post_content();
+    }
+
+    /// Exit filter mode but keep current filter active
+    pub fn exit_filter_mode(&mut self) {
+        self.filter_mode_active = false;
+        self.mode = AppMode::Browsing;
+        self.set_status_message("Filter mode exited".to_string());
+    }
+
+    /// Get all unique authors from the feed for selection
+    pub fn get_all_authors(&self) -> Vec<String> {
+        let mut authors = std::collections::HashSet::new();
+
+        // Collect from all posts
+        for post_rc in &self.feed.posts {
+            let post = post_rc.borrow();
+            if let Some(author) = post.author() {
+                authors.insert(author.to_string());
+            }
+        }
+
+        let mut author_list: Vec<String> = authors.into_iter().collect();
+        author_list.sort();
+        author_list
+    }
+
+    /// Get current source suggestion (from current post, user profile, or first post source)
+    pub fn get_current_source_suggestion(&self) -> Option<String> {
+        // Try to get source from current post first
+        if let Some(current_post) = self.current_post() {
+            let post = current_post.borrow();
+            if let Some(source) = post.source() {
+                return Some(source.to_string());
+            }
+        }
+        // Perhaps some fallback is in order?
+        None
+    }
+
+    /// Handle filter type selection - second stage of filter flow
+    fn handle_filter_type_selection(&mut self, selected_option: &str) {
+        let filter_option = FilterTypeOption::from_display_name(selected_option);
+        match filter_option {
+            Some(FilterTypeOption::Author) => {
+                let authors = self.get_all_authors();
+                if authors.is_empty() {
+                    self.set_status_message("No authors found in feed".to_string());
+                } else {
+                    self.show_status_option_select("Select author:", authors, StatusBarCallback::FilterAuthorSelection);
+                }
+            }
+            Some(FilterTypeOption::Tag) => {
+                self.show_status_text_input("Enter tag name:", "e.g., emacs, org-social", StatusBarCallback::FilterTagInput);
+            }
+            Some(FilterTypeOption::Language) => {
+                self.show_status_text_input("Enter language code:", "e.g., en, es", StatusBarCallback::FilterLanguageInput);
+            }
+            Some(FilterTypeOption::Source) => {
+                let default_source = self.get_current_source_suggestion().unwrap_or_default();
+                self.show_status_text_input_with_value("Enter source URL:", "e.g., https://example.com/social.org", &default_source, StatusBarCallback::FilterSourceInput);
+            }
+            Some(FilterTypeOption::PostsWithPolls) => {
+                self.apply_filter(FilterType::PostsWithPolls);
+                self.set_status_message("Filtering posts with polls".to_string());
+            }
+            Some(FilterTypeOption::ClearAllFilters) => {
+                self.clear_all_filters();
+                self.set_status_message("All filters cleared".to_string());
+            }
+            None => {
+                self.set_status_message(format!("Unknown filter type: {}", selected_option));
+            }
+        }
     }
 
     /// Show a temporary message in the status bar
