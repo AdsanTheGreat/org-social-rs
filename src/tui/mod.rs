@@ -18,6 +18,7 @@ pub mod activatable;
 pub mod app;
 pub mod events;
 pub mod modes;
+pub mod status_bar_widget;
 pub mod navigation;
 pub mod ui;
 
@@ -71,6 +72,9 @@ async fn run_app<B: ratatui::backend::Backend>(
         // Update cursor blink state
         app.update_cursor_blink();
         
+        // Update status bar timeouts
+        app.update_status_bar_timeouts();
+        
         terminal.draw(|f| {
             ui::draw_ui(
                 f,
@@ -84,11 +88,11 @@ async fn run_app<B: ratatui::backend::Backend>(
                 &app.reply_state,
                 &app.new_post_state,
                 &app.poll_vote_state,
-                &app.status_message,
                 app.cursor_visible,
                 app.help_scroll,
                 &app.activatable_collector,
                 Some(&app.activatable_manager),
+                &app.status_bar_state,
             )
         })?;
 

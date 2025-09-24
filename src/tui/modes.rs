@@ -7,6 +7,7 @@ pub enum AppMode {
     NewPost,
     Help,
     PollVote,
+    StatusBarWidget,
 }
 
 #[derive(Clone, PartialEq)]

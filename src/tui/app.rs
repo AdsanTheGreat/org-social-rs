@@ -5,6 +5,7 @@ use super::{
     events::{self, EventResult},
     modes::{AppMode, ViewMode},
     navigation::Navigator,
+    status_bar_widget::StatusBarState,
     ui::poll_vote::PollVoteState,
 };
 use crate::editor::{NewPostEditor, ReplyEditor};
@@ -42,8 +43,7 @@ pub struct TUI {
     pub new_post_state: Option<NewPostEditor>,
     /// Poll vote state (when voting on a poll)
     pub poll_vote_state: Option<PollVoteState>,
-    /// Status message to display
-    pub status_message: Option<String>,
+
     /// Cursor blink state (true = visible, false = hidden)
     pub cursor_visible: bool,
     /// Last time cursor blink state changed
@@ -58,6 +58,8 @@ pub struct TUI {
     pub persistent_reply_state: Option<ReplyEditor>,
     /// ID of the post that the persistent reply state is for
     pub persistent_reply_post_id: Option<String>,
+    /// Status bar widget state
+    pub status_bar_state: StatusBarState,
 }
 
 impl TUI {
@@ -92,7 +94,7 @@ impl TUI {
         feed.add_view(thread_view.clone());
         feed.add_view(notification_view.clone());
 
-        let app = TUI {
+        Ok(TUI {
             file_path: file_path.to_path_buf(),
             feed,
             simple_feed_view,
@@ -106,7 +108,7 @@ impl TUI {
             reply_state: None,
             new_post_state: None,
             poll_vote_state: None,
-            status_message: None,
+
             cursor_visible: true,
             last_cursor_blink: Instant::now(),
             activatable_manager: ActivatableManager::new(),
@@ -114,12 +116,8 @@ impl TUI {
             persistent_new_post_state: None,
             persistent_reply_state: None,
             persistent_reply_post_id: None,
-        };
-
-        // Process the initial post content (may need refactor for new view system)
-        // app.process_current_post_content();
-
-        Ok(app)
+            status_bar_state: StatusBarState::new(),
+        })
     }
 
     pub fn handle_event(&mut self, key_event: crossterm::event::KeyEvent) {
@@ -326,6 +324,40 @@ impl TUI {
             EventResult::ResetFields => {
                 self.reset_fields();
             }
+            // Status bar widget events
+            EventResult::StatusBarInput(c) => {
+                self.handle_status_bar_input(c);
+            }
+            EventResult::StatusBarBackspace => {
+                self.handle_status_bar_backspace();
+            }
+            EventResult::StatusBarDelete => {
+                self.handle_status_bar_delete();
+            }
+            EventResult::StatusBarCursorLeft => {
+                self.handle_status_bar_cursor_left();
+            }
+            EventResult::StatusBarCursorRight => {
+                self.handle_status_bar_cursor_right();
+            }
+            EventResult::StatusBarCursorStart => {
+                self.handle_status_bar_cursor_start();
+            }
+            EventResult::StatusBarCursorEnd => {
+                self.handle_status_bar_cursor_end();
+            }
+            EventResult::StatusBarUp => {
+                self.handle_status_bar_up();
+            }
+            EventResult::StatusBarDown => {
+                self.handle_status_bar_down();
+            }
+            EventResult::StatusBarSubmit => {
+                self.handle_status_bar_submit();
+            }
+            EventResult::StatusBarCancel => {
+                self.handle_status_bar_cancel();
+            }
         }
     }
 
@@ -335,7 +367,7 @@ impl TUI {
         self.navigator.reset_scroll();
         
         // Update status message to show current view
-        self.status_message = Some(format!("Switched to {}", self.view_mode.display_name().to_lowercase()));
+        self.set_status_message(format!("Switched to {}", self.view_mode.display_name().to_lowercase()));
     }
 
     /// Start replying to the current post
@@ -367,7 +399,7 @@ impl TUI {
             self.reply_state = Some(ReplyEditor::new(&self.current_post().unwrap().borrow()));
         }
         
-        self.status_message = Some(format!("Replying to post {post_id}"));
+        self.set_status_message(format!("Replying to post {post_id}"));
     }
 
     /// Cancel current action and return to browsing
@@ -383,7 +415,7 @@ impl TUI {
         self.mode = AppMode::Browsing;
         self.poll_vote_state = None;
         self.show_help = false;
-        self.status_message = None;
+        self.status_bar_state.reset();
     }
 
     /// Toggle help display
@@ -517,18 +549,18 @@ impl TUI {
             if let Some(path_str) = self.file_path.to_str() {
                 match post.save_post(path_str) {
                     Ok(_) => {
-                        self.status_message = Some("Reply saved successfully!".to_string());
+                        self.set_status_message("Reply saved successfully!".to_string());
                         // Clear persistent state on successful submission
                         self.persistent_reply_state = None;
                         self.persistent_reply_post_id = None;
                         self.cancel();
                     }
                     Err(e) => {
-                        self.status_message = Some(format!("Error saving reply: {}", e));
+                        self.set_status_message(format!("Error saving reply: {}", e));
                     }
                 }
             } else {
-                self.status_message = Some("Failed to save post: invalid file path".to_string());
+                self.set_status_message("Failed to save post: invalid file path".to_string());
             }
         }
     }
@@ -546,7 +578,7 @@ impl TUI {
             self.new_post_state = Some(NewPostEditor::new());
         }
         
-        self.status_message = Some("Creating new post".to_string());
+        self.set_status_message("Creating new post".to_string());
     }
 
     /// Reset all fields in the current form
@@ -556,13 +588,13 @@ impl TUI {
                 if let Some(post) = self.current_post() {
                     self.reply_state = Some(ReplyEditor::new(&post.borrow()));
                     self.persistent_reply_state = None; // Clear persistent state
-                    self.status_message = Some("Reply fields reset".to_string());
+                    self.set_status_message("Reply fields reset".to_string());
                 }
             }
             AppMode::NewPost => {
                 self.new_post_state = Some(NewPostEditor::new());
                 self.persistent_new_post_state = None; // Clear persistent state
-                self.status_message = Some("New post fields reset".to_string());
+                self.set_status_message("New post fields reset".to_string());
             }
             _ => {}
         }
@@ -647,17 +679,17 @@ impl TUI {
             if let Some(path_str) = self.file_path.to_str() {
                 match post.save_post(path_str) {
                     Ok(_) => {
-                        self.status_message = Some("New post saved successfully!".to_string());
+                        self.set_status_message("New post saved successfully!".to_string());
                         // Clear persistent state on successful submission
                         self.persistent_new_post_state = None;
                         self.cancel();
                     }
                     Err(e) => {
-                        self.status_message = Some(format!("Error saving new post: {}", e));
+                        self.set_status_message(format!("Error saving new post: {}", e));
                     }
                 }
             } else {
-                self.status_message = Some("Failed to save post: invalid file path".to_string());
+                self.set_status_message("Failed to save post: invalid file path".to_string());
             }
         }
     }
@@ -701,6 +733,11 @@ impl TUI {
         }
     }
 
+    /// Update status bar timeouts
+    pub fn update_status_bar_timeouts(&mut self) {
+        self.status_bar_state.check_timeout();
+    }
+
     /// Reset cursor to visible (called when user types)
     pub fn reset_cursor(&mut self) {
         self.cursor_visible = true;
@@ -716,14 +753,14 @@ impl TUI {
             if let Some(element) = self.activatable_manager.focused_element() {
                 match &element.element_type {
                     super::activatable::ActivatableType::Hyperlink { url, .. } => {
-                        self.status_message = Some(format!("Link: {url}"));
+                        self.set_status_message(format!("Link: {url}"));
                     }
                     super::activatable::ActivatableType::Mention { url, username } => {
-                        self.status_message = Some(format!("Mention: {username} ({url})"));
+                        self.set_status_message(format!("Mention: {username} ({url})"));
                     }
                     super::activatable::ActivatableType::Block { block_type, is_collapsed } => {
                         let state = if *is_collapsed { "collapsed" } else { "expanded" };
-                        self.status_message = Some(format!("Block: {block_type} ({state})"));
+                        self.set_status_message(format!("Block: {block_type} ({state})"));
                     }
                     super::activatable::ActivatableType::Poll { post_title: _, vote_counts, total_votes, status } => {
                         let poll_status = if let Some(counts) = vote_counts {
@@ -741,12 +778,12 @@ impl TUI {
                             // Fallback to basic poll info
                             format!("Poll: Press 'v' to count votes")
                         };
-                        self.status_message = Some(poll_status);
+                        self.set_status_message(poll_status);
                     }
                 }
             }
         } else {
-            self.status_message = Some("No activatable elements found in current view".to_string());
+            self.set_status_message("No activatable elements found in current view".to_string());
         }
     }
 
@@ -759,14 +796,14 @@ impl TUI {
             if let Some(element) = self.activatable_manager.focused_element() {
                 match &element.element_type {
                     super::activatable::ActivatableType::Hyperlink { url, .. } => {
-                        self.status_message = Some(format!("Link: {url}"));
+                        self.set_status_message(format!("Link: {url}"));
                     }
                     super::activatable::ActivatableType::Mention { url, username } => {
-                        self.status_message = Some(format!("Mention: {username} ({url})"));
+                        self.set_status_message(format!("Mention: {username} ({url})"));
                     }
                     super::activatable::ActivatableType::Block { block_type, is_collapsed } => {
                         let state = if *is_collapsed { "collapsed" } else { "expanded" };
-                        self.status_message = Some(format!("Block: {block_type} ({state})"));
+                        self.set_status_message(format!("Block: {block_type} ({state})"));
                     }
                     super::activatable::ActivatableType::Poll { post_title: _, vote_counts, total_votes, status } => {
                         let poll_status = if let Some(counts) = vote_counts {
@@ -784,12 +821,12 @@ impl TUI {
                             // Fallback to basic poll info
                             format!("Poll: Press 'v' to count votes")
                         };
-                        self.status_message = Some(poll_status);
+                        self.set_status_message(poll_status);
                     }
                 }
             }
         } else {
-            self.status_message = Some("No activatable elements found in current view".to_string());
+            self.set_status_message("No activatable elements found in current view".to_string());
         }
     }
 
@@ -803,7 +840,7 @@ impl TUI {
             if result_message == "StartPollVote" {
                 self.start_poll_vote();
             } else {
-                self.status_message = Some(result_message);
+                self.set_status_message(result_message);
             }
             
             // If we activated a block, refresh the processed content
@@ -813,7 +850,7 @@ impl TUI {
                 }
             }
         } else {
-            self.status_message = Some("No element currently focused".to_string());
+            self.set_status_message("No element currently focused".to_string());
         }
     }
 
@@ -821,7 +858,7 @@ impl TUI {
     pub fn count_poll_votes(&mut self) {
         // This functionality is only available in threaded view with access to ThreadNode
         if self.view_mode != ViewMode::Threaded {
-            self.status_message = Some("Vote counting only available in threaded view (press 't' to switch)".to_string());
+            self.set_status_message("Vote counting only available in threaded view (press 't' to switch)".to_string());
             return;
         }
 
@@ -829,14 +866,14 @@ impl TUI {
         let current_post = match self.current_post() {
             Some(post) => post,
             None => {
-                self.status_message = Some("No post selected".to_string());
+                self.set_status_message("No post selected".to_string());
                 return;
             }
         };
 
         // Check if the current post has a poll
         if !poll::is_poll_post(&current_post.borrow()) {
-            self.status_message = Some("Current post does not contain a poll".to_string());
+            self.set_status_message("Current post does not contain a poll".to_string());
             return;
         }
 
@@ -883,13 +920,13 @@ impl TUI {
                     ));
                 }
                 
-                self.status_message = Some(detailed_results.join(" | "));
+                self.set_status_message(detailed_results.join(" | "));
                 
                 // Force reprocessing of the current post content to update the display
                 self.process_current_post_content();
             }
             None => {
-                self.status_message = Some("Failed to count poll votes - invalid poll format".to_string());
+                self.set_status_message("Failed to count poll votes - invalid poll format".to_string());
             }
         }
     }
@@ -955,10 +992,10 @@ impl TUI {
                     poll_post_id,
                 ));
                 self.mode = AppMode::PollVote;
-                self.status_message = Some("Select a poll option to vote for".to_string());
+                self.set_status_message("Select a poll option to vote for".to_string());
             }
         } else {
-            self.status_message = Some("No poll focused".to_string());
+            self.set_status_message("No poll focused".to_string());
         }
     }
 
@@ -994,7 +1031,7 @@ impl TUI {
             self.reply_state = Some(vote_reply_state);
             self.mode = AppMode::Reply;
             self.poll_vote_state = None;
-            self.status_message = Some(format!(
+            self.set_status_message(format!(
                 "Vote for '{}' set in poll option field. Add content or press Ctrl+S to submit.",
                 selected_option
             ));
@@ -1002,7 +1039,163 @@ impl TUI {
             // No option selected or no poll state, return to browsing mode
             self.mode = AppMode::Browsing;
             self.poll_vote_state = None;
-            self.status_message = Some("No option selected".to_string());
+            self.set_status_message("No option selected".to_string());
         }
+    }
+
+    // Status bar widget handlers
+    
+    /// Handle character input in status bar widget
+    pub fn handle_status_bar_input(&mut self, c: char) {
+        self.status_bar_state.current_widget.handle_char_input(c);
+    }
+
+    /// Handle backspace in status bar widget
+    pub fn handle_status_bar_backspace(&mut self) {
+        self.status_bar_state.current_widget.handle_backspace();
+    }
+
+    /// Handle delete in status bar widget
+    pub fn handle_status_bar_delete(&mut self) {
+        self.status_bar_state.current_widget.handle_delete();
+    }
+
+    /// Handle cursor left in status bar widget
+    pub fn handle_status_bar_cursor_left(&mut self) {
+        self.status_bar_state.current_widget.handle_cursor_left();
+    }
+
+    /// Handle cursor right in status bar widget
+    pub fn handle_status_bar_cursor_right(&mut self) {
+        self.status_bar_state.current_widget.handle_cursor_right();
+    }
+
+    /// Handle cursor start (Home) in status bar widget
+    pub fn handle_status_bar_cursor_start(&mut self) {
+        self.status_bar_state.current_widget.handle_cursor_start();
+    }
+
+    /// Handle cursor end (End) in status bar widget
+    pub fn handle_status_bar_cursor_end(&mut self) {
+        self.status_bar_state.current_widget.handle_cursor_end();
+    }
+
+    /// Handle up/previous in status bar widget
+    pub fn handle_status_bar_up(&mut self) {
+        self.status_bar_state.current_widget.handle_up();
+    }
+
+    /// Handle down/next in status bar widget
+    pub fn handle_status_bar_down(&mut self) {
+        self.status_bar_state.current_widget.handle_down();
+    }
+
+    /// Handle submit/enter in status bar widget
+    pub fn handle_status_bar_submit(&mut self) {
+        // Get the value before processing
+        let value = self.status_bar_state.current_widget.get_value();
+        let confirmation = self.status_bar_state.current_widget.get_confirmation();
+        
+        // Process the submission based on callback_id
+        if let Some(callback_id) = &self.status_bar_state.callback_id.clone() {
+            self.process_status_bar_callback(callback_id, value, confirmation);
+        }
+        
+        // Return to browsing mode and reset status bar
+        self.mode = AppMode::Browsing;
+        self.status_bar_state.reset();
+    }
+
+    /// Handle cancel/escape in status bar widget
+    pub fn handle_status_bar_cancel(&mut self) {
+        // Check if we can go back in history
+        if !self.status_bar_state.go_back() {
+            // No history, return to browsing mode
+            self.mode = AppMode::Browsing;
+            self.status_bar_state.reset();
+        }
+    }
+
+    /// Process callback from status bar widget submission
+    fn process_status_bar_callback(&mut self, callback_id: &str, value: Option<String>, confirmation: Option<bool>) {
+        match callback_id {
+            "search" => {
+                if let Some(search_term) = value {
+                    self.set_status_message(format!("Searching for: {}", search_term));
+                    // TODO: Implement search functionality
+                }
+            }
+            "goto_post" => {
+                if let Some(post_id) = value {
+                    self.set_status_message(format!("Going to post: {}", post_id));
+                    // TODO: Implement goto post functionality
+                }
+            }
+            "confirm_action" => {
+                if let Some(confirmed) = confirmation {
+                    if confirmed {
+                        self.set_status_message("Action confirmed".to_string());
+                        // TODO: Execute the confirmed action
+                    } else {
+                        self.set_status_message("Action cancelled".to_string());
+                    }
+                }
+            }
+            _ => {
+                self.set_status_message(format!("Unknown callback: {}", callback_id));
+            }
+        }
+    }
+    
+    /// Show a text input widget in the status bar
+    pub fn show_status_text_input(&mut self, prompt: &str, placeholder: &str, callback_id: &str) {
+        self.status_bar_state.set_widget(
+            crate::tui::status_bar_widget::StatusBarWidget::text_input(prompt, placeholder),
+            true,
+        );
+        self.status_bar_state.callback_id = Some(callback_id.to_string());
+        self.mode = AppMode::StatusBarWidget;
+    }
+
+    /// Show an option select widget in the status bar
+    pub fn show_status_option_select(&mut self, prompt: &str, options: Vec<String>, callback_id: &str) {
+        self.status_bar_state.set_widget(
+            crate::tui::status_bar_widget::StatusBarWidget::option_select(prompt, options),
+            true,
+        );
+        self.status_bar_state.callback_id = Some(callback_id.to_string());
+        self.mode = AppMode::StatusBarWidget;
+    }
+
+    /// Show a confirmation dialog in the status bar
+    pub fn show_status_confirmation(&mut self, message: &str, yes_text: &str, no_text: &str, callback_id: &str) {
+        self.status_bar_state.set_widget(
+            crate::tui::status_bar_widget::StatusBarWidget::confirmation(message, yes_text, no_text),
+            true,
+        );
+        self.status_bar_state.callback_id = Some(callback_id.to_string());
+        self.mode = AppMode::StatusBarWidget;
+    }
+
+    /// Show a progress indicator in the status bar
+    pub fn show_status_progress(&mut self, message: &str, progress: Option<f64>) {
+        self.status_bar_state.set_widget(
+            crate::tui::status_bar_widget::StatusBarWidget::progress(message, progress),
+            false, // Don't preserve history for progress widgets
+        );
+    }
+
+    /// Show a temporary message in the status bar
+    pub fn show_status_message(&mut self, text: &str, timeout_ms: Option<u64>) {
+        self.status_bar_state.set_widget(
+            crate::tui::status_bar_widget::StatusBarWidget::message(text, timeout_ms),
+            false, // Don't preserve history for messages
+        );
+    }
+
+    /// Set a status message
+    pub fn set_status_message(&mut self, message: String) {
+        // Use the widget system exclusively
+        self.show_status_message(&message, Some(3000)); // 3 second timeout
     }
 }

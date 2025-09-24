@@ -56,6 +56,17 @@ pub enum EventResult {
     PollVoteDown,
     SubmitPollVote,
     ResetFields,
+    StatusBarInput(char),
+    StatusBarBackspace,
+    StatusBarDelete,
+    StatusBarCursorLeft,
+    StatusBarCursorRight,
+    StatusBarCursorStart,
+    StatusBarCursorEnd,
+    StatusBarUp,
+    StatusBarDown,
+    StatusBarSubmit,
+    StatusBarCancel,
 }
 
 pub fn handle_key_event(key: KeyEvent, mode: &AppMode) -> EventResult {
@@ -65,6 +76,7 @@ pub fn handle_key_event(key: KeyEvent, mode: &AppMode) -> EventResult {
         AppMode::NewPost => handle_new_post_input(key),
         AppMode::Help => handle_help_input(key),
         AppMode::PollVote => handle_poll_vote_input(key),
+        AppMode::StatusBarWidget => handle_status_bar_input(key),
     }
 }
 
@@ -209,6 +221,23 @@ pub fn handle_new_post_enter(new_post_state: &Option<NewPostEditor>) -> EventRes
             // In other fields, plain Enter goes to the next field
             EventResult::NextNewPostField
         }
+    }
+}
+
+fn handle_status_bar_input(key: KeyEvent) -> EventResult {
+    match key.code {
+        KeyCode::Char(c) => EventResult::StatusBarInput(c),
+        KeyCode::Enter => EventResult::StatusBarSubmit,
+        KeyCode::Esc => EventResult::StatusBarCancel,
+        KeyCode::Backspace => EventResult::StatusBarBackspace,
+        KeyCode::Delete => EventResult::StatusBarDelete,
+        KeyCode::Left => EventResult::StatusBarCursorLeft,
+        KeyCode::Right => EventResult::StatusBarCursorRight,
+        KeyCode::Up => EventResult::StatusBarUp,
+        KeyCode::Down => EventResult::StatusBarDown,
+        KeyCode::Home => EventResult::StatusBarCursorStart,
+        KeyCode::End => EventResult::StatusBarCursorEnd,
+        _ => EventResult::Continue,
     }
 }
 

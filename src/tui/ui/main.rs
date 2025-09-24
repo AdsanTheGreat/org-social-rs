@@ -3,7 +3,8 @@
 use super::super::activatable::{ActivatableCollector, ActivatableManager};
 use super::super::modes::{AppMode, ViewMode};
 use super::super::navigation::Navigator;
-use super::{content, help, new_post, poll_vote, post_list, reply, status};
+use super::super::status_bar_widget::StatusBarState;
+use super::{content, help, interactive_status, new_post, poll_vote, post_list, reply};
 use crate::editor::{NewPostEditor, ReplyEditor};
 use org_social_lib_rs::{feed, notifications, parser, threading};
 use std::rc::Rc;
@@ -26,11 +27,11 @@ pub fn draw_ui(
     reply_state: &Option<ReplyEditor>,
     new_post_state: &Option<NewPostEditor>,
     poll_vote_state: &Option<poll_vote::PollVoteState>,
-    status_message: &Option<String>,
     cursor_visible: bool,
     help_scroll: u16,
     collector: &ActivatableCollector,
     activatable_manager: Option<&ActivatableManager>,
+    status_bar_state: &StatusBarState,
 ) {
     let size = f.area();
 
@@ -54,7 +55,7 @@ pub fn draw_ui(
             }
         }
         _ => {
-            draw_main_ui(f, size, view_mode, simple_feed, notification_feed, thread_view, navigator, current_post, mode, status_message, collector, activatable_manager);
+            draw_main_ui(f, size, view_mode, simple_feed, notification_feed, thread_view, navigator, current_post, mode, collector, activatable_manager, status_bar_state);
         }
     }
 }
@@ -69,9 +70,9 @@ fn draw_main_ui(
     navigator: &Navigator,
     current_post: Option<Rc<RefCell<parser::Post>>>,
     mode: &AppMode,
-    status_message: &Option<String>,
     collector: &ActivatableCollector,
     activatable_manager: Option<&ActivatableManager>,
+    status_bar_state: &StatusBarState,
 ) {
     // Split the screen into three areas
     let main_chunks = Layout::default()
@@ -93,5 +94,5 @@ fn draw_main_ui(
     content::draw_post_content(f, content_chunks[1], current_post_borrowed, navigator.scroll_offset, collector, activatable_manager);
 
     // Draw status area
-    status::draw_status_area(f, main_chunks[1], mode, view_mode, status_message);
+    interactive_status::draw_status_area(f, main_chunks[1], mode, view_mode, status_bar_state);
 }

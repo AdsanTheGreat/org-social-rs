@@ -2,6 +2,7 @@
 
 pub mod content;
 pub mod help;
+pub mod interactive_status;
 pub mod main;
 pub mod new_post;
 pub mod poll_vote;
