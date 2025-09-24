@@ -141,25 +141,25 @@ async fn handle_feed_command(
     }
     
     let feed = if user_only {
-        feed::Feed::create_user_feed(user_profile, user_posts)
+        feed::Feed::from_user_posts(user_profile, user_posts)
     } else {
-        match feed::Feed::create_combined_feed(user_profile, user_posts).await {
+        match feed::Feed::new_from_user(user_profile, user_posts).await {
             Ok(feed) => feed,
             Err(e) => {
                 eprintln!("{} {}", "Warning:".yellow().bold(), format!("Failed to fetch remote feeds: {e}").red());
                 println!("{}", "Showing user posts only...".yellow());
                 let user_posts = parser::parse_file(&std::fs::read_to_string("social.org").unwrap_or_default(), None).1;
-                feed::Feed::create_user_feed(user_profile, user_posts)
+                feed::Feed::from_user_posts(user_profile, user_posts)
             }
         }
     };
     
-    let mut posts_to_show: Vec<&parser::Post> = feed.posts.iter().collect();
+    let mut posts_to_show: Vec<&std::rc::Rc<std::cell::RefCell<parser::Post>>> = feed.posts.iter().collect();
     
     // Apply source filter
     if let Some(source) = &source_filter {
         posts_to_show.retain(|post| {
-                post.source().as_ref().map(|s| s == source).unwrap_or(false)
+                post.borrow().source().as_ref().map(|s| s == source).unwrap_or(false)
             });
     }
     
@@ -167,7 +167,7 @@ async fn handle_feed_command(
     if let Some(days) = days_filter {
         let cutoff = Utc::now() - Duration::try_days(days as i64).unwrap_or_default();
         posts_to_show.retain(|post| {
-                if let Some(post_time) = post.time() {
+                if let Some(post_time) = post.borrow().time() {
                     post_time.naive_utc() > cutoff.naive_utc()
                 } else {
                     false
@@ -181,7 +181,7 @@ async fn handle_feed_command(
     println!("{}", "=== Feed ===".cyan().bold());
     println!("{}", format!("Showing {} posts", posts_to_show.len()).bright_black());
     for (i, post) in posts_to_show.iter().enumerate() {
-        println!("{}", formatting::format_post_colored(post, Some(user_profile)));
+        println!("{}", formatting::format_post_colored(&post.borrow(), Some(user_profile)));
         if i < posts_to_show.len() - 1 {
             println!();
         }

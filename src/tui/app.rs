@@ -8,20 +8,24 @@ use super::{
     ui::poll_vote::PollVoteState,
 };
 use crate::editor::{NewPostEditor, ReplyEditor};
-use chrono::{Duration as ChronoDuration, Utc};
-use org_social_lib_rs::{feed, notifications, parser, poll, threading};
+use org_social_lib_rs::{feed, parser, poll, threading, notifications};
+use std::rc::Rc;
+use std::cell::RefCell;
+
 use std::time::Instant;
 
 /// Application state for the TUI
 pub struct TUI {
     /// Path to the org file 
     pub file_path: std::path::PathBuf,
-    /// All posts to display
-    pub posts: Vec<parser::Post>,
-    /// Notification feed
-    pub notification_feed: notifications::NotificationFeed,
-    /// Threaded view of posts
-    pub thread_view: threading::ThreadView,
+    /// Main feed storage
+    pub feed: feed::Feed,
+    /// Chronological feed view
+    pub simple_feed_view: Rc<RefCell<feed::SimpleFeed>>,
+    /// Threaded view
+    pub thread_view: Rc<RefCell<threading::ThreadView>>,
+    /// Notification view
+    pub notification_view: Rc<RefCell<notifications::NotificationFeed>>,
     /// Current view mode (list or threaded)
     pub view_mode: ViewMode,
     /// Navigation state
@@ -62,63 +66,38 @@ impl TUI {
         user_profile: &parser::Profile,
         user_posts: Vec<parser::Post>,
         user_only: bool,
-        source_filter: Option<String>,
-        days_filter: Option<u32>,
+        _source_filter: Option<String>,
+        _days_filter: Option<u32>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let feed = if user_only {
-            feed::Feed::create_user_feed(user_profile, user_posts.clone())
+        let mut feed = if user_only {
+            feed::Feed::from_user_posts(user_profile, user_posts.clone())
         } else {
-            match feed::Feed::create_combined_feed(user_profile, user_posts.clone()).await {
+            match feed::Feed::new_from_user(user_profile, user_posts.clone()).await {
                 Ok(feed) => feed,
                 Err(_) => {
-                    // Fallback to user posts only
-                    feed::Feed::create_user_feed(user_profile, user_posts.clone())
+                    feed::Feed::from_user_posts(user_profile, user_posts.clone())
                 }
             }
         };
 
-        // Create notification feed from all posts for the user
-        let all_posts_for_notifications = if user_only {
-            // If user_only, we only have user posts, so no notifications
-            Vec::new()
-        } else {
-            feed.posts.clone()
-        };
-        let notification_feed = notifications::NotificationFeed::create_notification_feed(
-            user_profile,
-            &user_posts,
-            all_posts_for_notifications,
-        );
+        // Create views
+        let simple_feed_view = Rc::new(RefCell::new(feed::SimpleFeed::from_feed(&feed)));
+        let thread_view = Rc::new(RefCell::new(threading::ThreadView::from(&feed)));
+        let notification_view = Rc::new(RefCell::new(
+            notifications::NotificationFeed::from_feed(&feed, user_profile)
+        ));
 
-        let mut posts: Vec<parser::Post> = feed.posts.into_iter().collect();
+        // Register views with feed
+        feed.add_view(simple_feed_view.clone());
+        feed.add_view(thread_view.clone());
+        feed.add_view(notification_view.clone());
 
-        // Apply source filter
-        if let Some(source) = &source_filter {
-            posts.retain(|post| {
-                    post.source().as_ref().map(|s| s == source).unwrap_or(false)
-                });
-        }
-
-        // Apply days filter
-        if let Some(days) = days_filter {
-            let cutoff = Utc::now() - ChronoDuration::try_days(days as i64).unwrap_or_default();
-            posts.retain(|post| {
-                    if let Some(post_time) = post.time() {
-                        post_time.naive_utc() > cutoff.naive_utc()
-                    } else {
-                        false
-                    }
-                });
-        }
-
-        // Create threaded view from posts
-        let thread_view = threading::ThreadView::from_posts(posts.clone());
-
-        let mut app = TUI {
+        let app = TUI {
             file_path: file_path.to_path_buf(),
-            posts,
-            notification_feed,
+            feed,
+            simple_feed_view,
             thread_view,
+            notification_view,
             view_mode: ViewMode::List,
             navigator: Navigator::new(),
             show_help: false,
@@ -137,8 +116,8 @@ impl TUI {
             persistent_reply_post_id: None,
         };
 
-        // Process the initial post content
-        app.process_current_post_content();
+        // Process the initial post content (may need refactor for new view system)
+        // app.process_current_post_content();
 
         Ok(app)
     }
@@ -155,18 +134,28 @@ impl TUI {
             }
             EventResult::Continue => {}
             EventResult::NextPost => {
-                self.navigator.next_post(&self.view_mode, &self.posts, &self.thread_view, Some(&self.notification_feed));
+                self.navigator.next_post(
+                    &self.view_mode,
+                    &self.simple_feed_view.borrow(),
+                    &self.thread_view.borrow(),
+                    Some(&self.notification_view.borrow()),
+                );
                 self.process_current_post_content();
             }
             EventResult::PrevPost => {
-                self.navigator.prev_post(&self.view_mode, &self.posts, &self.thread_view, Some(&self.notification_feed));
+                self.navigator.prev_post(
+                    &self.view_mode,
+                    &self.simple_feed_view.borrow(),
+                    &self.thread_view.borrow(),
+                    Some(&self.notification_view.borrow()),
+                );
                 self.process_current_post_content();
             }
             EventResult::ScrollDown => {
                 if self.mode == AppMode::Help {
                     self.scroll_help_down();
                 } else {
-                    self.navigator.scroll_down(&self.posts);
+                    self.navigator.scroll_down(&self.simple_feed_view.borrow());
                 }
             }
             EventResult::ScrollUp => {
@@ -180,14 +169,14 @@ impl TUI {
                 if self.mode == AppMode::Help {
                     self.help_scroll = 0;
                 } else {
-                    self.navigator.go_to_first(&self.posts);
+                    self.navigator.go_to_first(&self.simple_feed_view.borrow());
                 }
             }
             EventResult::GoToLast => {
                 if self.mode == AppMode::Help {
                     self.scroll_help_to_bottom();
                 } else {
-                    self.navigator.go_to_last(&self.posts);
+                    self.navigator.go_to_last(&self.simple_feed_view.borrow());
                 }
             }
             EventResult::ToggleView => {
@@ -352,7 +341,8 @@ impl TUI {
     /// Start replying to the current post
     pub fn start_reply(&mut self) {
         // Extract the required data from the current post first
-        let (post_id, _initial_tags) = if let Some(post) = self.current_post() {
+        let (post_id, _initial_tags) = if let Some(post_rc) = self.current_post() {
+            let post = post_rc.borrow();
             (post.full_id(), post.tags().clone())
         } else {
             return;
@@ -369,12 +359,12 @@ impl TUI {
                 // Different post, reset and create new state
                 self.persistent_reply_state = None;
                 self.persistent_reply_post_id = Some(post_id.clone());
-                self.reply_state = Some(ReplyEditor::new(self.current_post().unwrap()));
+                self.reply_state = Some(ReplyEditor::new(&self.current_post().unwrap().borrow()));
             }
         } else {
             // First time replying, create new state
             self.persistent_reply_post_id = Some(post_id.clone());
-            self.reply_state = Some(ReplyEditor::new(self.current_post().unwrap()));
+            self.reply_state = Some(ReplyEditor::new(&self.current_post().unwrap().borrow()));
         }
         
         self.status_message = Some(format!("Replying to post {post_id}"));
@@ -564,7 +554,7 @@ impl TUI {
         match self.mode {
             AppMode::Reply => {
                 if let Some(post) = self.current_post() {
-                    self.reply_state = Some(ReplyEditor::new(post));
+                    self.reply_state = Some(ReplyEditor::new(&post.borrow()));
                     self.persistent_reply_state = None; // Clear persistent state
                     self.status_message = Some("Reply fields reset".to_string());
                 }
@@ -672,28 +662,31 @@ impl TUI {
         }
     }
 
-    pub fn current_post(&self) -> Option<&parser::Post> {
+    pub fn current_post(&self) -> Option<Rc<RefCell<parser::Post>>> {
         match self.view_mode {
-            ViewMode::List => self.posts.get(self.navigator.selected_post),
+            ViewMode::List => {
+                let view = self.simple_feed_view.borrow();
+                view.posts.get(self.navigator.selected_post).cloned()
+            }
             ViewMode::Threaded => {
-                if self.thread_view.is_empty() {
+                let view = self.thread_view.borrow();
+                if view.roots.is_empty() {
                     return None;
                 }
-                let current_thread = &self.thread_view.roots[self.navigator.selected_thread];
+                let current_thread = &view.roots[self.navigator.selected_thread];
                 let thread_posts = current_thread.flatten();
-                thread_posts.get(self.navigator.selected_thread_post).copied()
+                thread_posts.get(self.navigator.selected_thread_post).map(|rc| (*rc).clone())
             }
             ViewMode::Notifications => {
-                // Get the post from the notification at the selected index
-                self.notification_feed.notifications
-                    .get(self.navigator.selected_post)
-                    .map(|notification| &notification.post)
+                let view = self.notification_view.borrow();
+                view.notifications.get(self.navigator.selected_post).map(|n| n.post.clone())
             }
         }
     }
 
     pub fn process_current_post_content(&mut self) {
-        if let Some(post) = self.current_post().cloned() {
+        if let Some(post_rc) = self.current_post() {
+            let post = post_rc.borrow();
             self.activatable_manager.process_post(&post);
         }
     }
@@ -832,9 +825,9 @@ impl TUI {
             return;
         }
 
-        // Get the current post and thread node
-        let (current_post, thread_node) = match self.get_current_thread_node() {
-            Some((post, node)) => (post, node),
+        // Get the current post first
+        let current_post = match self.current_post() {
+            Some(post) => post,
             None => {
                 self.status_message = Some("No post selected".to_string());
                 return;
@@ -842,23 +835,33 @@ impl TUI {
         };
 
         // Check if the current post has a poll
-        if !poll::is_poll_post(current_post) {
+        if !poll::is_poll_post(&current_post.borrow()) {
             self.status_message = Some("Current post does not contain a poll".to_string());
             return;
         }
 
-        // Get all reply posts from the thread node to count votes
-        let reply_posts: Vec<parser::Post> = thread_node.replies
-            .iter()
-            .flat_map(|reply_node| {
-                let mut posts = vec![reply_node.post.clone()];
-                posts.extend(self.collect_all_replies_recursive(reply_node));
-                posts
-            })
-            .collect();
+        // Get the thread node and reply posts
+        let reply_posts: Vec<Rc<RefCell<parser::Post>>> = {
+            let view = self.thread_view.borrow();
+            if view.roots.is_empty() {
+                Vec::new()
+            } else {
+                let thread_node = &view.roots[self.navigator.selected_thread];
+                thread_node.replies
+                    .iter()
+                    .flat_map(|reply_node| {
+                        let mut posts = vec![reply_node.post.clone()];
+                        let replies = self.collect_all_replies_recursive(reply_node);
+                        posts.extend(replies.into_iter().map(|post| Rc::new(RefCell::new(post))));
+                        posts
+                    })
+                    .collect()
+            }
+        };
 
-        // Count the votes using the org-social-lib-rs poll module
-        match poll::count_poll_votes(current_post, &reply_posts) {
+        let reply_posts_owned: Vec<_> = reply_posts.iter().map(|rc| rc.borrow().clone()).collect();
+        let current_post_borrowed = current_post.borrow();
+        match poll::count_poll_votes(&*current_post_borrowed, &reply_posts_owned) {
             Some(poll_result) => {
                 // Update the activatable manager with the poll results
                 self.activatable_manager.update_poll_results(&poll_result);
@@ -891,26 +894,26 @@ impl TUI {
         }
     }
 
-    /// Get the current thread node and post when in threaded view
-    fn get_current_thread_node(&self) -> Option<(&parser::Post, &threading::ThreadNode)> {
-        if self.thread_view.is_empty() {
+    /// Get the current thread post index when in threaded view
+    fn get_current_thread_post_index(&self) -> Option<usize> {
+        let view = self.thread_view.borrow();
+        if view.roots.is_empty() {
             return None;
         }
-
-        let current_thread = &self.thread_view.roots[self.navigator.selected_thread];
+        let current_thread = &view.roots[self.navigator.selected_thread];
         let thread_posts = current_thread.flatten();
-        let current_post = thread_posts.get(self.navigator.selected_thread_post)?;
-        
-        // For simplicity, we return the root thread node
-        // In a more sophisticated implementation, you might want to find the exact node
-        Some((current_post, current_thread))
+        if self.navigator.selected_thread_post < thread_posts.len() {
+            Some(self.navigator.selected_thread_post)
+        } else {
+            None
+        }
     }
 
     /// Recursively collect all reply posts from a thread node
     fn collect_all_replies_recursive(&self, node: &threading::ThreadNode) -> Vec<parser::Post> {
         let mut posts = Vec::new();
         for reply in &node.replies {
-            posts.push(reply.post.clone());
+            posts.push(reply.post.borrow().clone());
             posts.extend(self.collect_all_replies_recursive(reply));
         }
         posts
@@ -929,7 +932,7 @@ impl TUI {
                 } else {
                     // If no vote counts, try to parse options from the current post
                     if let Some(current_post) = self.current_post() {
-                        if let Some(poll) = poll::parse_poll_from_post(current_post) {
+                        if let Some(poll) = poll::parse_poll_from_post(&current_post.borrow()) {
                             poll.options.into_iter().map(|opt| opt.text).collect()
                         } else {
                             vec!["Option 1".to_string(), "Option 2".to_string()] // Fallback
@@ -941,7 +944,7 @@ impl TUI {
 
                 // Get the current post ID for creating the vote reply
                 let poll_post_id = if let Some(current_post) = self.current_post() {
-                    current_post.full_id()
+                    current_post.borrow().full_id()
                 } else {
                     "unknown".to_string()
                 };
@@ -983,7 +986,7 @@ impl TUI {
 
         if let Some(selected_option) = selected_option {
             // Create a reply state for the poll vote with the selected option set in poll_option
-            let mut vote_reply_state = ReplyEditor::new(self.current_post().unwrap());
+            let mut vote_reply_state = ReplyEditor::new(&self.current_post().unwrap().borrow());
 
             vote_reply_state.set_poll_option(selected_option.clone());
 

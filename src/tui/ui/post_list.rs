@@ -4,7 +4,7 @@ use crate::tui::ui::content::render_fancy_summary;
 
 use super::super::modes::ViewMode;
 use super::super::navigation::Navigator;
-use org_social_lib_rs::{notifications, parser, post::PostType, threading};
+use org_social_lib_rs::{feed, notifications, parser, post::PostType, threading};
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -14,10 +14,10 @@ use ratatui::{
 };
 
 /// Draw the post list (either list or threaded view or notifications)
-pub fn draw_post_list(f: &mut Frame, area: Rect, view_mode: &ViewMode, posts: &[parser::Post], notification_feed: &notifications::NotificationFeed, thread_view: &threading::ThreadView, navigator: &Navigator) {
+pub fn draw_post_list(f: &mut Frame, area: Rect, view_mode: &ViewMode, simple_feed: &feed::SimpleFeed, notification_feed: &notifications::NotificationFeed, thread_view: &threading::ThreadView, navigator: &Navigator) {
     match view_mode {
         ViewMode::List => {
-            draw_list_view(f, area, posts, navigator);
+            draw_list_view(f, area, &simple_feed.posts, navigator);
         }
         ViewMode::Threaded => {
             draw_threaded_view(f, area, thread_view, navigator);
@@ -28,7 +28,7 @@ pub fn draw_post_list(f: &mut Frame, area: Rect, view_mode: &ViewMode, posts: &[
     }
 }
 
-fn draw_list_view(f: &mut Frame, area: Rect, posts: &[parser::Post], navigator: &Navigator) {
+fn draw_list_view(f: &mut Frame, area: Rect, posts: &[std::rc::Rc<std::cell::RefCell<parser::Post>>], navigator: &Navigator) {
     if posts.is_empty() {
         let no_posts = List::new(vec![ListItem::new("No posts available")])
             .block(Block::default().borders(Borders::ALL).title("Posts (0/0)"))
@@ -47,21 +47,22 @@ fn draw_list_view(f: &mut Frame, area: Rect, posts: &[parser::Post], navigator: 
                 Style::default()
             };
 
-            let author = post.author().as_ref().map(|s| s.as_str()).unwrap_or("unknown");
-            let time_str = if let Some(time) = post.time() {
+            let post_borrowed = post.borrow();
+            let author = post_borrowed.author().as_ref().map(|s| s.as_str()).unwrap_or("unknown");
+            let time_str = if let Some(time) = post_borrowed.time() {
                 time.format("%d-%m %H:%M").to_string()
             } else {
                 "no time".to_string()
             };
 
-            let content_preview = match post.post_type() {
+            let content_preview = match post_borrowed.post_type() {
                 PostType::Reaction => {
-                    post.mood().clone().unwrap_or("".to_owned()).to_string()
+                    post_borrowed.mood().clone().unwrap_or("".to_owned()).to_string()
                 }
                 PostType::SimplePollVote => {
-                    format!("Vote: {}", post.poll_option().clone().unwrap_or("".to_owned()))
+                    format!("Vote: {}", post_borrowed.poll_option().clone().unwrap_or("".to_owned()))
                 }
-                _ => render_fancy_summary(post, 25)
+                _ => render_fancy_summary(&*post_borrowed, 25)
             };
 
             let line = Line::from(vec![
@@ -105,7 +106,8 @@ fn draw_threaded_view(f: &mut Frame, area: Rect, thread_view: &threading::Thread
     for (thread_idx, thread) in thread_view.roots.iter().enumerate() {
         let thread_posts = thread.flatten();
         
-        for (post_idx, post) in thread_posts.iter().enumerate() {
+        for (post_idx, post_rc) in thread_posts.iter().enumerate() {
+            let post = post_rc.borrow();
             if thread_idx == navigator.selected_thread && post_idx == navigator.selected_thread_post {
                 selected_global_index = global_index;
             }
@@ -138,7 +140,7 @@ fn draw_threaded_view(f: &mut Frame, area: Rect, thread_view: &threading::Thread
                 PostType::SimplePollVote => {
                     format!("Vote: {}", post.poll_option().clone().unwrap_or("".to_owned()))
                 }
-                _ => render_fancy_summary(post, 25)
+                _ => render_fancy_summary(&post, 25)
             };
 
             let line = Line::from(vec![
@@ -172,7 +174,7 @@ fn draw_threaded_view(f: &mut Frame, area: Rect, thread_view: &threading::Thread
 
 // Helper function to find the depth of a post in the reply tree
 fn find_post_depth(node: &threading::ThreadNode, target_id: &str, current_depth: usize) -> Option<usize> {
-    if node.post.id() == target_id {
+    if node.post.borrow().id() == target_id {
         return Some(current_depth);
     }
     
@@ -217,13 +219,13 @@ fn draw_notifications_view(f: &mut Frame, area: Rect, notification_feed: &notifi
             line.push(Span::raw(" "));
 
             // Add author
-            if let Some(author) = post.author() {
+            if let Some(author) = post.borrow().author() {
                 line.push(Span::styled(author.clone(), Style::default().fg(Color::Green)));
                 line.push(Span::raw(": "));
             }
 
             // Add truncated content
-            let content = post.content().trim().replace('\n', " ");
+            let content = post.borrow().content().trim().replace('\n', " ");
             let max_len = area.width.saturating_sub(30) as usize; // Leave space for type and author
             let truncated = if content.len() > max_len {
                 format!("{}...", &content[..max_len.min(content.len())])

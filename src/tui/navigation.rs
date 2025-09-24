@@ -1,7 +1,9 @@
 //! Navigation logic for posts and threads.
 
 use super::modes::ViewMode;
-use org_social_lib_rs::{notifications, parser, threading};
+use org_social_lib_rs::{notifications, threading};
+use org_social_lib_rs::feed::SimpleFeed;
+
 
 pub struct Navigator {
     pub selected_post: usize,
@@ -20,15 +22,19 @@ impl Navigator {
         }
     }
 
-    pub fn next_post(&mut self, view_mode: &ViewMode, posts: &[parser::Post], thread_view: &threading::ThreadView, notification_feed: Option<&notifications::NotificationFeed>) {
+    pub fn next_post(&mut self, view_mode: &ViewMode, simple_feed: &SimpleFeed, thread_view: &threading::ThreadView, notification_feed: Option<&notifications::NotificationFeed>) {
         match view_mode {
             ViewMode::List => {
+                    let posts = &simple_feed.posts;
                 if !posts.is_empty() && self.selected_post < posts.len().saturating_sub(1) {
                     self.selected_post += 1;
                     self.scroll_offset = 0;
                 }
             }
             ViewMode::Threaded => {
+                // Use ThreadView
+                // thread_view: Rc<RefCell<ThreadView>>
+                let thread_view = thread_view;
                 self.next_threaded_post(thread_view);
             }
             ViewMode::Notifications => {
@@ -43,15 +49,17 @@ impl Navigator {
         }
     }
 
-    pub fn prev_post(&mut self, view_mode: &ViewMode, posts: &[parser::Post], thread_view: &threading::ThreadView, notification_feed: Option<&notifications::NotificationFeed>) {
+    pub fn prev_post(&mut self, view_mode: &ViewMode, simple_feed: &SimpleFeed, thread_view: &threading::ThreadView, notification_feed: Option<&notifications::NotificationFeed>) {
         match view_mode {
             ViewMode::List => {
+                    let posts = &simple_feed.posts;
                 if !posts.is_empty() && self.selected_post > 0 {
                     self.selected_post -= 1;
                     self.scroll_offset = 0;
                 }
             }
             ViewMode::Threaded => {
+                let thread_view = thread_view;
                 self.prev_threaded_post(thread_view);
             }
             ViewMode::Notifications => {
@@ -66,18 +74,16 @@ impl Navigator {
     }
 
     fn next_threaded_post(&mut self, thread_view: &threading::ThreadView) {
-        if thread_view.is_empty() {
+        // Refactor for Rc<RefCell<ThreadView>>
+        let view = thread_view;
+        if view.is_empty() {
             return;
         }
-
-        let current_thread = &thread_view.roots[self.selected_thread];
+        let current_thread = &view.roots[self.selected_thread];
         let thread_posts = current_thread.flatten();
-        
         if self.selected_thread_post < thread_posts.len().saturating_sub(1) {
-            // Move to next post in current thread
             self.selected_thread_post += 1;
-        } else if self.selected_thread < thread_view.roots.len().saturating_sub(1) {
-            // Move to next thread
+        } else if self.selected_thread < view.thread_count().saturating_sub(1) {
             self.selected_thread += 1;
             self.selected_thread_post = 0;
         }
@@ -85,40 +91,41 @@ impl Navigator {
     }
 
     fn prev_threaded_post(&mut self, thread_view: &threading::ThreadView) {
-        if thread_view.is_empty() {
+        let view = thread_view;
+        if view.is_empty() {
             return;
         }
-
         if self.selected_thread_post > 0 {
-            // Move to previous post in current thread
             self.selected_thread_post -= 1;
         } else if self.selected_thread > 0 {
-            // Move to previous thread, select last post
             self.selected_thread -= 1;
-            let current_thread = &thread_view.roots[self.selected_thread];
+            let current_thread = &view.roots[self.selected_thread];
             let thread_posts = current_thread.flatten();
             self.selected_thread_post = thread_posts.len().saturating_sub(1);
         }
         self.scroll_offset = 0;
     }
 
-    pub fn go_to_first(&mut self, posts: &[parser::Post]) {
+    pub fn go_to_first(&mut self, simple_feed: &SimpleFeed) {
+        let posts = &simple_feed.posts;
         if !posts.is_empty() {
             self.selected_post = 0;
             self.scroll_offset = 0;
         }
     }
 
-    pub fn go_to_last(&mut self, posts: &[parser::Post]) {
+    pub fn go_to_last(&mut self, simple_feed: &SimpleFeed) {
+        let posts = &simple_feed.posts;
         if !posts.is_empty() {
             self.selected_post = posts.len() - 1;
             self.scroll_offset = 0;
         }
     }
 
-    pub fn scroll_down(&mut self, posts: &[parser::Post]) {
+    pub fn scroll_down(&mut self, simple_feed: &SimpleFeed) {
+        let posts = &simple_feed.posts;
         if let Some(post) = posts.get(self.selected_post) {
-            let content_lines = post.content().lines().count();
+            let content_lines = post.borrow().content().lines().count();
             if self.scroll_offset < content_lines.saturating_sub(1) {
                 self.scroll_offset += 1;
             }

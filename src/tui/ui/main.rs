@@ -5,8 +5,9 @@ use super::super::modes::{AppMode, ViewMode};
 use super::super::navigation::Navigator;
 use super::{content, help, new_post, poll_vote, post_list, reply, status};
 use crate::editor::{NewPostEditor, ReplyEditor};
-use org_social_lib_rs::post::Post;
-use org_social_lib_rs::{notifications, threading};
+use org_social_lib_rs::{feed, notifications, parser, threading};
+use std::rc::Rc;
+use std::cell::RefCell;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     Frame,
@@ -17,11 +18,11 @@ pub fn draw_ui(
     f: &mut Frame,
     mode: &AppMode,
     view_mode: &ViewMode,
-    posts: &[Post],
+    simple_feed: &feed::SimpleFeed,
     notification_feed: &notifications::NotificationFeed,
     thread_view: &threading::ThreadView,
     navigator: &Navigator,
-    current_post: Option<&Post>,
+    current_post: Option<Rc<RefCell<parser::Post>>>,
     reply_state: &Option<ReplyEditor>,
     new_post_state: &Option<NewPostEditor>,
     poll_vote_state: &Option<poll_vote::PollVoteState>,
@@ -53,7 +54,7 @@ pub fn draw_ui(
             }
         }
         _ => {
-            draw_main_ui(f, size, view_mode, posts, notification_feed, thread_view, navigator, current_post, mode, status_message, collector, activatable_manager);
+            draw_main_ui(f, size, view_mode, simple_feed, notification_feed, thread_view, navigator, current_post, mode, status_message, collector, activatable_manager);
         }
     }
 }
@@ -62,11 +63,11 @@ fn draw_main_ui(
     f: &mut Frame,
     area: Rect,
     view_mode: &ViewMode,
-    posts: &[Post],
+    simple_feed: &feed::SimpleFeed,
     notification_feed: &notifications::NotificationFeed,
     thread_view: &threading::ThreadView,
     navigator: &Navigator,
-    current_post: Option<&Post>,
+    current_post: Option<Rc<RefCell<parser::Post>>>,
     mode: &AppMode,
     status_message: &Option<String>,
     collector: &ActivatableCollector,
@@ -84,10 +85,12 @@ fn draw_main_ui(
         .split(main_chunks[0]);
 
     // Draw post list (or notification list)
-    post_list::draw_post_list(f, content_chunks[0], view_mode, posts, notification_feed, thread_view, navigator);
+    post_list::draw_post_list(f, content_chunks[0], view_mode, simple_feed, notification_feed, thread_view, navigator);
 
     // Draw post content
-    content::draw_post_content(f, content_chunks[1], current_post, navigator.scroll_offset, collector, activatable_manager);
+    let current_post_ref = current_post.as_ref().map(|p| p.borrow());
+    let current_post_borrowed = current_post_ref.as_ref().map(|p| &**p);
+    content::draw_post_content(f, content_chunks[1], current_post_borrowed, navigator.scroll_offset, collector, activatable_manager);
 
     // Draw status area
     status::draw_status_area(f, main_chunks[1], mode, view_mode, status_message);
