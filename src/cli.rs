@@ -3,6 +3,8 @@ use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand, ValueEnum};
 use colored::*;
 use org_social_lib_rs::{feed, network, parser};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::path::PathBuf;
 
 #[derive(Clone, ValueEnum)]
@@ -140,7 +142,7 @@ async fn handle_feed_command(
         println!("{}", "Creating feed...".bright_black());
     }
     
-    let feed = if user_only {
+    let mut feed = if user_only {
         feed::Feed::from_user_posts(user_profile, user_posts)
     } else {
         match feed::Feed::new_from_user(user_profile, user_posts).await {
@@ -154,34 +156,47 @@ async fn handle_feed_command(
         }
     };
     
-    let mut posts_to_show: Vec<&std::rc::Rc<std::cell::RefCell<parser::Post>>> = feed.posts.iter().collect();
-    
-    // Apply source filter
-    if let Some(source) = &source_filter {
-        posts_to_show.retain(|post| {
-                post.borrow().source().as_ref().map(|s| s == source).unwrap_or(false)
-            });
-    }
-    
-    // Apply days filter
-    if let Some(days) = days_filter {
-        let cutoff = Utc::now() - Duration::try_days(days as i64).unwrap_or_default();
-        posts_to_show.retain(|post| {
-                if let Some(post_time) = post.borrow().time() {
-                    post_time.naive_utc() > cutoff.naive_utc()
-                } else {
-                    false
+    // Create and register a SimpleFeed view, so filters operate through the view system
+    let simple_feed_view: Rc<RefCell<feed::SimpleFeed>> = Rc::new(RefCell::new(feed::SimpleFeed::from_feed(&feed)));
+    feed.add_view(simple_feed_view.clone());
+
+    // Build a composite filter from CLI options and apply via the Feed API (propagates to views)
+    if source_filter.is_some() || days_filter.is_some() {
+        let source_opt = source_filter.clone();
+        let cutoff_opt = days_filter.map(|days| Utc::now() - Duration::try_days(days as i64).unwrap_or_default());
+        feed.filter_custom(Box::new(move |post: &parser::Post| {
+            // Source filter
+            if let Some(ref source) = source_opt {
+                if post.source().as_ref().map(|s| s == source).unwrap_or(false) == false {
+                    return false;
                 }
-            });
+            }
+            // Days/time filter
+            if let Some(cutoff) = cutoff_opt {
+                match post.time() {
+                    Some(post_time) => {
+                        if !(post_time.naive_utc() > cutoff.naive_utc()) {
+                            return false;
+                        }
+                    }
+                    None => return false,
+                }
+            }
+            true
+        }));
     }
-    
-    // Take only the requested count
-    posts_to_show.truncate(count);
+
+    // Collect posts to show (already sorted and filtered in the view)
+    let posts_to_show: Vec<Rc<RefCell<parser::Post>>> = if count > 0 {
+        simple_feed_view.borrow().get_recent_posts(count)
+    } else {
+        simple_feed_view.borrow().posts.clone()
+    };
     
     println!("{}", "=== Feed ===".cyan().bold());
     println!("{}", format!("Showing {} posts", posts_to_show.len()).bright_black());
-    for (i, post) in posts_to_show.iter().enumerate() {
-        println!("{}", formatting::format_post_colored(&post.borrow(), Some(user_profile)));
+    for (i, post_rc) in posts_to_show.iter().enumerate() {
+        println!("{}", formatting::format_post_colored(&post_rc.borrow(), Some(user_profile)));
         if i < posts_to_show.len() - 1 {
             println!();
         }
